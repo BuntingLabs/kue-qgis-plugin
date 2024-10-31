@@ -12,14 +12,14 @@ class KueTask(QgsTask):
     responseReceived = pyqtSignal(dict)
     errorReceived = pyqtSignal(str)
 
-    def __init__(self, user_request, kue_context):
+    def __init__(self, user_request, kue_context, history_str):
         super().__init__(
             'Waiting for Kue to respond',
             QgsTask.CanCancel
         )
         self.user_request = user_request
         self.kue_context = kue_context
-
+        self.history_str = history_str
     def run(self):
         try:
             url = QUrl("https://qgis-api.buntinglabs.com/kue/v1")
@@ -35,6 +35,9 @@ class KueTask(QgsTask):
             post_data.append(b"\r\n--boundary\r\n")
             post_data.append(b"Content-Disposition: form-data; name=\"context\"\r\n\r\n")
             post_data.append(json.dumps(self.kue_context).encode('utf-8'))
+            post_data.append(b"\r\n--boundary\r\n")
+            post_data.append(b"Content-Disposition: form-data; name=\"chat_history\"\r\n\r\n")
+            post_data.append(self.history_str.encode('utf-8'))
             post_data.append(b"\r\n--boundary--\r\n")
 
             nam = QgsNetworkAccessManager.instance()

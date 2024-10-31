@@ -4,6 +4,7 @@ import os
 import random
 import secrets
 import string
+from itertools import islice
 
 from PyQt5.QtWidgets import (
     QVBoxLayout, QLabel, QLineEdit, QPushButton, QAction, 
@@ -20,19 +21,24 @@ from qgis.core import (
     QgsCoordinateReferenceSystem, QgsCoordinateTransform,
     QgsTextBufferSettings, QgsTextFormat, QgsRectangle,
     QgsSingleSymbolRenderer, QgsSymbol, QgsCategorizedSymbolRenderer,
-    QgsRendererCategory, QgsRasterLayer
+    QgsRendererCategory, QgsRasterLayer, QgsGraduatedSymbolRenderer,
+    QgsRendererRange, QgsDataSourceUri
 )
 from qgis import processing
 from qgis.core import QgsFillSymbol
 
 from .kue_task import KueTask
 from .kue_messages import KUE_INTRODUCTION_MESSAGES
+from .kue_sidebar import KueSidebar
+from .kue_find import KueFind
 
 class KuePlugin:
 
     def __init__(self, iface):
         self.iface = iface
         self.settings = QSettings()
+
+        self.kue_find = KueFind()
 
         # Read the plugin version
         try:
@@ -47,7 +53,6 @@ class KuePlugin:
         self.kue_icon_path = os.path.join(os.path.dirname(__file__), "icon.png")
         self.kue_action = QAction(QIcon(self.kue_icon_path), '<b>Open Kue</b><p>Use an AI assistant that can read and edit your project</p>', None)
 
-        self.textbox = None
         self.text_dock_widget = None
 
         # Load the greeting message 
@@ -72,112 +77,21 @@ class KuePlugin:
         self.kue_action.triggered.connect(self.toggleKue)
         self.iface.addToolBarIcon(self.kue_action)
 
+        self.text_dock_widget = KueSidebar(
+            self.iface,
+            self.onEnterClicked,
+            self.kue_find
+        )
+
     def unload(self):
         self.iface.removeToolBarIcon(self.kue_action)
 
     def toggleKue(self):
-        if self.text_dock_widget is None:
-            self.text_dock_widget = QDockWidget("Kue", self.iface.mainWindow())
-
-            # User needs to authenticate to access the cloud services
-            user_auth_token = self.settings.value("buntinglabs-kue/auth_token", "")
-
-            if not user_auth_token:
-                auth_widget = QWidget()
-                auth_layout = QVBoxLayout()
-                auth_layout.setAlignment(Qt.AlignVCenter)
-
-                title = QLabel("<h2>Kue</h2>")
-                title.setContentsMargins(0, 0, 0, 10)
-                description = QLabel("Kue is an embedded AI assistant inside QGIS. It can read and edit your project, using cloud AI services to do so (LLMs).")
-                description.setWordWrap(True)
-                description.setContentsMargins(0, 0, 0, 10)
-                description.setMinimumWidth(300)
-                pricing = QLabel("Using Kue requires a subscription of $19/month (first month free). This allows us to build useful AI tools.")
-                pricing.setWordWrap(True)
-                pricing.setContentsMargins(0, 0, 0, 10)
-                pricing.setMinimumWidth(300)
-                login_button = QPushButton("Log In")
-                login_button.setFixedWidth(280)
-                login_button.setStyleSheet("QPushButton { background-color: #0d6efd; color: white; border: none; padding: 8px; border-radius: 4px; } QPushButton:hover { background-color: #0b5ed7; }")
-                login_button.clicked.connect(self.authenticateUser)
-
-                auth_layout.addWidget(title)
-                auth_layout.addWidget(description)
-                auth_layout.addWidget(pricing)
-                auth_layout.addWidget(login_button)
-                auth_widget.setLayout(auth_layout)
-
-                self.text_dock_widget.setWidget(auth_widget)
-                self.iface.addDockWidget(Qt.RightDockWidgetArea, self.text_dock_widget)
-            else:
-                self.textbox = QLineEdit()
-                self.textbox.returnPressed.connect(self.onEnterClicked)
-
-                def handleKeyPress(e):
-                    if e.key() == Qt.Key_Up:
-                        user_messages = [msg for msg in self.context_messages if msg['role'] == 'user']
-                        if user_messages:
-                            self.textbox.setText(user_messages[-1]['msg'])
-                    else:
-                        QLineEdit.keyPressEvent(self.textbox, e)
-                self.textbox.keyPressEvent = handleKeyPress
-
-                self.enter_button = QPushButton("Enter")
-                self.enter_button.setFixedSize(50, 20)
-                self.enter_button.clicked.connect(self.onEnterClicked)
-
-                layout = QVBoxLayout()
-                self.chat_display = QLabel()
-                self.chat_display.setWordWrap(True)
-                self.chat_display.setAlignment(Qt.AlignBottom)
-                self.chat_display.setOpenExternalLinks(True)
-                self.chat_display.setTextInteractionFlags(Qt.TextBrowserInteraction)
-
-                scroll_area = QScrollArea()
-                scroll_area.setFrameShape(QFrame.NoFrame)
-                scroll_area.setWidgetResizable(True)
-                scroll_area.setWidget(self.chat_display)
-                layout.addWidget(scroll_area)
-
-                h_layout = QHBoxLayout()
-                h_layout.addWidget(self.textbox)
-                h_layout.addWidget(self.enter_button)
-                layout.addLayout(h_layout)
-
-                self.text_widget = QWidget()
-                self.text_widget.setLayout(layout)
-
-                self.text_dock_widget.setWidget(self.text_widget)
-                self.iface.addDockWidget(Qt.RightDockWidgetArea, self.text_dock_widget)
-
-                self.updateChatDisplay()
-        else:
-            if self.text_dock_widget is not None:
-                self.iface.removeDockWidget(self.text_dock_widget)
-                self.text_dock_widget = None
-                self.text_widget = None
-                self.textbox = None
+        self.iface.addDockWidget(Qt.RightDockWidgetArea, self.text_dock_widget)
 
     def handleLinkClick(self, url):
         # Handle link clicks - url is a string containing the clicked URL
         QDesktopServices.openUrl(QUrl(url))
-
-    def updateChatDisplay(self):
-        messages = "".join(
-            f"<p style='text-align: {'right' if msg['role'] == 'user' else 'left'}; "
-            f"color: {'red' if msg['role'] == 'error' else '#1E3E62' if msg['role'] == 'system' else '#000'}; "
-            f"{'font-style:italic;' if msg['role'] in ['system', 'error'] else ''}'>"
-            f"{msg['msg']}</p>"
-            for msg in self.context_messages
-        )
-        self.chat_display.setText(messages)
-        
-        # Scroll to the bottom
-        scroll_area = self.chat_display.parent()
-        if isinstance(scroll_area, QScrollArea):
-            scroll_bar = scroll_area.verticalScrollBar()
-            scroll_bar.setValue(scroll_bar.maximum())
 
     # ================================================
     # Authentication
@@ -202,6 +116,12 @@ class KuePlugin:
         return {
             "projection": QgsProject.instance().crs().authid(),
             "locale": QSettings().value('locale/userLocale'),
+            "bbox": [
+                self.iface.mapCanvas().extent().xMinimum(),
+                self.iface.mapCanvas().extent().yMinimum(),
+                self.iface.mapCanvas().extent().xMaximum(),
+                self.iface.mapCanvas().extent().yMaximum()
+            ],
             "vector_layers": [
                 {
                     "layer_name": layer.name(),
@@ -209,11 +129,12 @@ class KuePlugin:
                     "layer_type": QgsWkbTypes.displayString(layer.wkbType()),
                     "symbology": self.getLayerSymbology(layer),
                     "num_features": layer.featureCount(),
-                    "attribute_example": [] if layer.featureCount() == 0 else [{
+                    # For now, give only 1 feature (if present) with islice
+                    "attribute_example": [{
                         str(field.name()): str(feature[field.name()]) 
                         for field in layer.fields()
                         if field.name() in feature.fields().names()
-                    } for feature in [layer.getFeature(0)]]
+                    } for feature in islice(layer.getFeatures(), 1)]
                 }
                 for layer in vector_layers
             ]
@@ -247,24 +168,32 @@ class KuePlugin:
                 self.addWMSLayer(action['add_wms_layer'])
             if action.get('add_cloud_vector_layer'):
                 self.addCloudVectorLayer(action['add_cloud_vector_layer'])
+            if action.get('add_arcgis_rest_server_layer'):
+                self.addArcGISFeatureServerLayer(action['add_arcgis_rest_server_layer'])
             if action.get('set_vector_single_symbol'):
                 self.setVectorSingleSymbology(action['set_vector_single_symbol'])
             if action.get('set_vector_categorized_symbol'):
                 self.setVectorCategorizedSymbol(action['set_vector_categorized_symbol'])
+            if action.get('set_vector_graduated_symbol'):
+                self.setVectorGraduatedSymbol(action['set_vector_graduated_symbol'])
             if action.get('zoom_to_bounding_box'):
                 self.zoomToBoundingBox(action['zoom_to_bounding_box'])
             if action.get('set_vector_labels'):
                 self.setVectorLabels(action['set_vector_labels'])
+            if action.get('suggest_pyqgis_code'):
+                self.suggestPyQGISCode(action['suggest_pyqgis_code'])
+            if action.get('set_vector_layer_subset_string'):
+                self.setVectorLayerSubsetString(action['set_vector_layer_subset_string'])
             if action.get('chat'):
-                self.context_messages.append({"role": "assistant", "msg": action['chat']['message']})
-                self.updateChatDisplay()
+                self.text_dock_widget.addMessage({"role": "assistant", "msg": action['chat']['message']})
+                # self.updateChatDisplay()
             if action.get('geoprocessing'):
                 # Give system message
                 # Get display name for geoprocessing algorithm
                 for alg in QgsApplication.processingRegistry().algorithms():
                     if alg.id() == action['geoprocessing']['id']:
-                        self.context_messages.append({"role": "system", "msg": f"Running {alg.displayName()}..."})
-                        self.updateChatDisplay()
+                        self.text_dock_widget.addMessage({"role": "system", "msg": f"Running {alg.displayName()}..."})
+                        # self.updateChatDisplay()
                         break
 
                 processing.runAndLoadResults(
@@ -283,8 +212,8 @@ class KuePlugin:
         for dataset in datasets:
             html += f'<div style="padding: 8px;"><a href="{dataset["url"]}" style="color: #0066cc; text-decoration: none;" onmouseover="this.style.color=\'#003366\'" onmouseout="this.style.color=\'#0066cc\'">{dataset["title"]}</a><br><span style="color: #000000;">{dataset["description"]}</span></div>'
 
-        self.context_messages.append({"role": "assistant", "msg": html})
-        self.updateChatDisplay()
+        self.text_dock_widget.addMessage({"role": "assistant", "msg": html})
+        # self.updateChatDisplay()
 
     def setVectorLabels(self, label_action):
         layers = QgsProject.instance().mapLayersByName(label_action['layer_name'])
@@ -328,6 +257,15 @@ class KuePlugin:
         if layer and isinstance(layer, QgsVectorLayer):
             self.iface.openAttributeTable(layer)
 
+    def setVectorLayerSubsetString(self, subset_action):
+        layer = QgsProject.instance().mapLayersByName(subset_action['layer_name'])[0]
+        if layer and isinstance(layer, QgsVectorLayer):
+            if not layer.setSubsetString(subset_action['subset_string']):
+                self.text_dock_widget.addMessage({"role": "error", "msg": "Failed to set subset string", "has_button": False})
+            else:
+                self.text_dock_widget.addMessage({"role": "assistant", "msg": f"{subset_action['layer_name']}: {subset_action['subset_string']}", "has_button": False})
+            layer.triggerRepaint()
+
     def setVectorSingleSymbology(self, symbology_action):
         layer = QgsProject.instance().mapLayersByName(symbology_action['layer_name'])[0]
         if layer and isinstance(layer, QgsVectorLayer):
@@ -358,6 +296,55 @@ class KuePlugin:
             layer.setRenderer(renderer)
             layer.triggerRepaint()
 
+    def setVectorGraduatedSymbol(self, symbology_action):
+        layer = QgsProject.instance().mapLayersByName(symbology_action['layer_name'])[0]
+        if layer and isinstance(layer, QgsVectorLayer):
+            field_name = symbology_action['field_name']
+            classes = symbology_action['classes']
+
+            symbol = QgsSymbol.defaultSymbol(layer.geometryType())
+            symbol.setOpacity(symbology_action['opacity'])
+
+            # Create graduated renderer
+            renderer = QgsGraduatedSymbolRenderer(field_name)
+            renderer.setSourceSymbol(symbol.clone())
+
+            # Calculate class breaks using equal interval
+            field_index = layer.fields().indexFromName(field_name)
+            min_val = layer.minimumValue(field_index)
+            max_val = layer.maximumValue(field_index)
+            interval = (max_val - min_val) / classes
+
+            # Choose one of 4 diverging color ramps randomly
+            color_ramps = [
+                [QColor(208,28,139), QColor(77,172,38)],   # Pink-Green
+                [QColor(184,55,115), QColor(53,151,143)],  # Purple-Teal
+                [QColor(230,97,1), QColor(94,113,106)],    # Orange-Gray
+                [QColor(214,47,39), QColor(33,102,172)]    # Red-Blue
+            ]
+            start_color, end_color = random.choice(color_ramps)
+
+            # Create class breaks and assign symbols
+            for i in range(classes):
+                lower = min_val + (interval * i)
+                upper = min_val + (interval * (i + 1))
+
+                # Calculate interpolated color
+                t = i / (classes - 1) if classes > 1 else 0
+                r = int(start_color.red() + (end_color.red() - start_color.red()) * t)
+                g = int(start_color.green() + (end_color.green() - start_color.green()) * t)
+                b = int(start_color.blue() + (end_color.blue() - start_color.blue()) * t)
+
+                symbol = QgsSymbol.defaultSymbol(layer.geometryType())
+                symbol.setColor(QColor(r, g, b))
+                symbol.setOpacity(symbology_action['opacity'])
+
+                range_label = f'{lower:.2f} - {upper:.2f}'
+                renderer.addClassRange(QgsRendererRange(lower, upper, symbol, range_label))
+
+            layer.setRenderer(renderer)
+            layer.triggerRepaint()
+
     def addXYZLayer(self, xyz_action):
         uri = f"type=xyz&url={xyz_action['url']}"
         layer = QgsRasterLayer(uri, xyz_action['name'], "wms")
@@ -375,26 +362,37 @@ class KuePlugin:
         if layer.isValid():
             QgsProject.instance().addMapLayer(layer)
 
+    def addArcGISFeatureServerLayer(self, arcgis_feature_server_action):
+        print('adding rest server')
+        uri = QgsDataSourceUri()
+        uri.setParam('crs', 'EPSG:3857')
+        uri.setParam('url', arcgis_feature_server_action['url'])
+        layer = QgsVectorLayer(uri.uri(), arcgis_feature_server_action['name'], "arcgisfeatureserver")
+        if layer.isValid():
+            QgsProject.instance().addMapLayer(layer)
+        else:
+            print('not valid')
+
+    def suggestPyQGISCode(self, code_action):
+        self.text_dock_widget.addMessage({"role": "assistant", "msg": code_action['code'], "has_button": True})
+
     def addCloudVectorLayer(self, cloud_vector_action):
         layer = QgsVectorLayer(f"/vsicurl/{cloud_vector_action['url']}", cloud_vector_action['name'], "ogr")
         if layer.isValid():
             QgsProject.instance().addMapLayer(layer)
 
     def handleKueError(self, msg):
-        self.context_messages.append({"role": "error", "msg": msg})
-        self.updateChatDisplay()
+        self.text_dock_widget.addMessage({"role": "error", "msg": msg, "has_button": False})
 
-    def onEnterClicked(self):
-        text = self.textbox.text()
+    def onEnterClicked(self, text: str, history: list[str]):
+        history_str = '\n'.join(history)[-2048:]
 
-        kue_task = KueTask(text, self.createKueContext())
+        kue_task = KueTask(text, self.createKueContext(), history_str)
         kue_task.responseReceived.connect(self.handleKueResponse)
         kue_task.errorReceived.connect(self.handleKueError)
         QgsApplication.taskManager().addTask(kue_task)
         self.task_trash.append(kue_task)
 
-        self.textbox.clear()
-
-        self.context_messages.append({"role": "user", "msg": text})
-        self.updateChatDisplay()
+        self.text_dock_widget.addMessage({"role": "user", "msg": text, "has_button": False})
+        # self.updateChatDisplay()
 
