@@ -4,11 +4,20 @@ import os
 from osgeo import ogr, osr, gdal
 from time import time
 import numpy as np
+from functools import lru_cache
 
 import csv
 from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsPointXY, QgsProject, QgsTask, QgsApplication
 
+@lru_cache(maxsize=100)
+def transformation_for_crs_to_4326(authid: str):
+    source_srs = osr.SpatialReference()
+    source_srs.ImportFromEPSG(int(authid.split(':')[1]))
+    target_srs = osr.SpatialReference()
+    target_srs.ImportFromEPSG(4326)
+    target_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
 
+    return osr.CoordinateTransformation(source_srs, target_srs)
 
 def levenshtein_distance(s1: str, s2: str) -> int:
     if len(s1) < len(s2):
@@ -104,9 +113,7 @@ class IndexingTask(QgsTask):
                     # Get extent and transform if needed
                     bbox = layer.GetExtent() # Returns (minx,maxx,miny,maxy)
                     if source_srs and source_srs.GetAuthorityCode(None) != '4326':
-                        transform = osr.CoordinateTransformation(source_srs, target_srs)
-                        # Ensure traditional lon/lat axis order
-                        target_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+                        transform = transformation_for_crs_to_4326(f"EPSG:{source_srs.GetAuthorityCode(None)}")
 
                         # Convert bbox corners preserving lon/lat order
                         point_sw = ogr.CreateGeometryFromWkt(f'POINT ({bbox[0]} {bbox[2]})') # minx,miny
@@ -144,19 +151,14 @@ class IndexingTask(QgsTask):
                             # Transform to EPSG:4326 if needed
                             source_crs = QgsCoordinateReferenceSystem(ds.GetProjection())
                             if source_crs.isValid() and source_crs.authid() != 'EPSG:4326':
-                                target_crs = QgsCoordinateReferenceSystem('EPSG:4326')
-                                transform = QgsCoordinateTransform(source_crs, target_crs, QgsProject.instance())
-                                transform.setAllowFallbackTransforms(True)
-                                
                                 try:
-                                    # Check for inf values
-                                    if any(abs(x) == float('inf') for x in bbox):
-                                        bbox = None
-                                    else:
-                                        # Transform corners preserving lon/lat order
-                                        point_sw = transform.transform(QgsPointXY(bbox[0], bbox[1])) # min_lon,min_lat
-                                        point_ne = transform.transform(QgsPointXY(bbox[2], bbox[3])) # max_lon,max_lat
-                                        bbox = (point_sw.x(), point_sw.y(), point_ne.x(), point_ne.y())
+                                    transform = transformation_for_crs_to_4326(source_crs.authid())
+
+                                    point_sw = ogr.CreateGeometryFromWkt(f'POINT ({bbox[0]} {bbox[1]})') # min_lon,min_lat
+                                    point_ne = ogr.CreateGeometryFromWkt(f'POINT ({bbox[2]} {bbox[3]})') # max_lon,max_lat
+                                    point_sw.Transform(transform)
+                                    point_ne.Transform(transform)
+                                    bbox = (point_sw.GetX(), point_sw.GetY(), point_ne.GetX(), point_ne.GetY())
                                 except:
                                     bbox = None
                     ds = None
