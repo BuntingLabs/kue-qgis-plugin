@@ -110,17 +110,28 @@ class KuePlugin:
     # ================================================
 
     def createKueContext(self):
+        project_crs = QgsProject.instance().crs()
         layers = QgsProject.instance().mapLayers().values()
         vector_layers = [layer for layer in layers if isinstance(layer, QgsVectorLayer)]
 
+        # Transform bounding box to EPSG:4326 if needed
+        qgis_bbox = self.iface.mapCanvas().extent()
+        if project_crs != QgsCoordinateReferenceSystem("EPSG:4326"):
+            try:
+                transform = QgsCoordinateTransform(project_crs, QgsCoordinateReferenceSystem("EPSG:4326"), QgsProject.instance())
+                qgis_bbox = transform.transformBoundingBox(qgis_bbox)
+            except Exception as e:
+                print(f"Failed to transform bounding box to EPSG:4326: {e}")
+                pass
+
         return {
-            "projection": QgsProject.instance().crs().authid(),
+            "projection": project_crs.authid(),
             "locale": QSettings().value('locale/userLocale'),
             "bbox": [
-                self.iface.mapCanvas().extent().xMinimum(),
-                self.iface.mapCanvas().extent().yMinimum(),
-                self.iface.mapCanvas().extent().xMaximum(),
-                self.iface.mapCanvas().extent().yMaximum()
+                qgis_bbox.xMinimum(),
+                qgis_bbox.yMinimum(),
+                qgis_bbox.xMaximum(),
+                qgis_bbox.yMaximum()
             ],
             "vector_layers": [
                 {
@@ -244,10 +255,13 @@ class KuePlugin:
         source_crs = QgsCoordinateReferenceSystem('EPSG:4326')
         rectangle = QgsRectangle(bbox['xmin'], bbox['ymin'], bbox['xmax'], bbox['ymax'])
         dest_crs = self.iface.mapCanvas().mapSettings().destinationCrs()
-        transform = QgsCoordinateTransform(source_crs, dest_crs, QgsProject.instance())
-        transformed_rectangle = transform.transformBoundingBox(rectangle)
-        self.iface.mapCanvas().setExtent(transformed_rectangle)
-        self.iface.mapCanvas().refresh()
+        try:
+            transform = QgsCoordinateTransform(source_crs, dest_crs, QgsProject.instance())
+            transformed_rectangle = transform.transformBoundingBox(rectangle)
+            self.iface.mapCanvas().setExtent(transformed_rectangle)
+            self.iface.mapCanvas().refresh()
+        except Exception as e:
+            self.handleKueError(f"Failed to zoom to bounding box: {e}")
 
     def openAttributeTable(self, layer_name):
         layers = QgsProject.instance().mapLayersByName(layer_name)
