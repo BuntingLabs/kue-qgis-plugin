@@ -157,7 +157,7 @@ class IndexingTask(QgsTask):
                             'geometry_type': geom_type,
                             'bbox': bbox
                         })
-                        self.filename_trigrams[full_path] = get_trigrams(filename)
+                        self.filename_trigrams[full_path] = get_trigrams(full_path)
                         continue
 
                 if filename.endswith('.shp'):
@@ -167,11 +167,12 @@ class IndexingTask(QgsTask):
                     layer = ds.GetLayer(0)
                     geom_type = ogr.GeometryTypeToName(layer.GetGeomType())
                     file_type = 'vector'
-                    # Get source SRS - Fix: Use GetSpatialRef() instead of GetProjection()
-                    source_crs = QgsCoordinateReferenceSystem(layer.GetSpatialRef().ExportToWkt())
 
                     # Get extent and transform if needed
                     try:
+                        # Get source SRS - Fix: Use GetSpatialRef() instead of GetProjection()
+                        source_crs = QgsCoordinateReferenceSystem(layer.GetSpatialRef().ExportToWkt())
+
                         bbox = layer.GetExtent() # Returns (minx,maxx,miny,maxy)
                         if source_crs.isValid():
                             source_srs = osr.SpatialReference()
@@ -263,7 +264,7 @@ class IndexingTask(QgsTask):
                     'geometry_type': geom_type,
                     'bbox': bbox
                 })
-                self.filename_trigrams[full_path] = get_trigrams(filename)
+                self.filename_trigrams[full_path] = get_trigrams(full_path)
 
             if USE_SQLITE:
                 conn.commit()
