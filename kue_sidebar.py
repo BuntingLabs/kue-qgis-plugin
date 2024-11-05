@@ -4,9 +4,9 @@ from PyQt5.QtWidgets import (
     QDockWidget, QStackedWidget, QWidget, QLineEdit, QPushButton, QHBoxLayout,
     QVBoxLayout, QScrollArea, QListWidget, QFrame, QListWidgetItem, QLabel
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QSettings
 from qgis.core import QgsVectorLayer, QgsRasterLayer, QgsProject
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QIcon, QColor
 from qgis.core import QgsIconUtils
 
 from typing import Callable
@@ -14,15 +14,45 @@ import os
 from .kue_find import KueFind
 
 class KueSidebar(QDockWidget):
-    def __init__(self, iface, messageSent: Callable, kue_find: KueFind):
+    def __init__(self, iface, messageSent: Callable, authenticateUser: Callable, kue_find: KueFind):
         super().__init__("Kue", iface.mainWindow())
 
         # Properties
         self.iface = iface
         self.messageSent = messageSent
+        self.authenticateUser = authenticateUser
         self.kue_find = kue_find
         # The parent widget is either kue or auth
         self.parent_widget = QStackedWidget()
+
+        # Add auth widget
+        self.auth_widget = QWidget()
+        auth_layout = QVBoxLayout()
+        auth_layout.setAlignment(Qt.AlignVCenter)
+
+        title = QLabel("<h2>Kue</h2>")
+        title.setContentsMargins(0, 0, 0, 10)
+
+        description = QLabel("Kue is an embedded AI assistant inside QGIS. It can read and edit your project, using cloud AI services to do so (LLMs).")
+        description.setWordWrap(True)
+        description.setContentsMargins(0, 0, 0, 10)
+        description.setMinimumWidth(300)
+
+        pricing = QLabel("Using Kue requires a subscription of $19/month (first month free). This allows us to build useful AI tools.")
+        pricing.setWordWrap(True)
+        pricing.setContentsMargins(0, 0, 0, 10)
+        pricing.setMinimumWidth(300)
+
+        login_button = QPushButton("Log In")
+        login_button.setFixedWidth(280)
+        login_button.setStyleSheet("QPushButton { background-color: #0d6efd; color: white; border: none; padding: 8px; border-radius: 4px; } QPushButton:hover { background-color: #0b5ed7; }")
+        login_button.clicked.connect(self.authenticateUser)
+
+        auth_layout.addWidget(title)
+        auth_layout.addWidget(description)
+        auth_layout.addWidget(pricing)
+        auth_layout.addWidget(login_button)
+        self.auth_widget.setLayout(auth_layout)
 
         # 1. Build the textbox and enter button widget
         self.message_bar_widget = QWidget()
@@ -108,6 +138,9 @@ class KueSidebar(QDockWidget):
         self.kue_widget = QWidget()
         self.kue_widget.setLayout(self.kue_layout)
         self.parent_widget.addWidget(self.kue_widget)
+        self.parent_widget.addWidget(self.auth_widget)
+
+        self.parent_widget.setCurrentIndex(0 if QSettings().value("buntinglabs-kue/auth_token") else 1)
 
         self.setWidget(self.parent_widget)
 

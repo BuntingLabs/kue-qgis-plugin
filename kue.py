@@ -80,6 +80,7 @@ class KuePlugin:
         self.text_dock_widget = KueSidebar(
             self.iface,
             self.onEnterClicked,
+            self.authenticateUser,
             self.kue_find
         )
 
@@ -94,7 +95,11 @@ class KuePlugin:
             self.text_dock_widget = None
 
     def toggleKue(self):
-        self.iface.addDockWidget(Qt.RightDockWidgetArea, self.text_dock_widget)
+        if self.text_dock_widget.isVisible():
+            self.text_dock_widget.hide()
+        else:
+            self.text_dock_widget.show()
+            self.iface.addDockWidget(Qt.RightDockWidgetArea, self.text_dock_widget)
 
     def handleLinkClick(self, url):
         # Handle link clicks - url is a string containing the clicked URL

@@ -141,16 +141,13 @@ class IndexingTask(QgsTask):
                     row = c.fetchone()
                     if row:
                         bbox = (row[0], row[1], row[2], row[3])
-                        find_type = FindType(row[4])
-                        file_type = 'raster' if find_type == FindType.FIND_RASTER else 'vector'
-                        if find_type == FindType.FIND_VECTOR_POINT:
-                            geom_type = 'point'
-                        elif find_type == FindType.FIND_VECTOR_LINE:
-                            geom_type = 'line'
-                        elif find_type == FindType.FIND_VECTOR_POLYGON:
-                            geom_type = 'polygon'
-                        else:
-                            geom_type = None
+                        find_type = FindType(row[4]) if row[4] is not None else None
+                        file_type = 'raster' if find_type == FindType.FIND_RASTER else 'vector' if find_type else None
+                        geom_type = {
+                            FindType.FIND_VECTOR_POINT: 'point',
+                            FindType.FIND_VECTOR_LINE: 'line',
+                            FindType.FIND_VECTOR_POLYGON: 'polygon'
+                        }.get(find_type)
 
                         self.files.append({
                             'path': full_path,
@@ -300,7 +297,6 @@ class KueFind:
                 self.files = self.index_task.files
                 self.filename_trigrams = self.index_task.filename_trigrams
             self.index_task = None
-            print('indexing task finished', exception)
             
         self.index_task.taskCompleted.connect(task_completed)
         self.index_task.taskTerminated.connect(task_completed)
