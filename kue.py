@@ -86,6 +86,13 @@ class KuePlugin:
     def unload(self):
         self.iface.removeToolBarIcon(self.kue_action)
 
+        if self.text_dock_widget:
+            # Remove from main window
+            self.iface.removeDockWidget(self.text_dock_widget)
+            # Schedule widget for deletion
+            self.text_dock_widget.deleteLater()
+            self.text_dock_widget = None
+
     def toggleKue(self):
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.text_dock_widget)
 
@@ -137,6 +144,7 @@ class KuePlugin:
                 {
                     "layer_name": layer.name(),
                     "source": layer.source(),
+                    "visible": is_layer_visible(layer),
                     "layer_type": QgsWkbTypes.displayString(layer.wkbType()),
                     "symbology": self.getLayerSymbology(layer),
                     "num_features": layer.featureCount(),
@@ -191,6 +199,8 @@ class KuePlugin:
                 self.zoomToBoundingBox(action['zoom_to_bounding_box'])
             if action.get('set_vector_labels'):
                 self.setVectorLabels(action['set_vector_labels'])
+            if action.get('set_layer_visibility'):
+                self.setLayerVisibility(action['set_layer_visibility'])
             if action.get('suggest_pyqgis_code'):
                 self.suggestPyQGISCode(action['suggest_pyqgis_code'])
             if action.get('set_vector_layer_subset_string'):
@@ -235,17 +245,17 @@ class KuePlugin:
             label_settings = QgsPalLayerSettings()
             label_settings.fieldName = label_action['attribute_name']
             label_settings.enabled = True
+
+            text_format = QgsTextFormat()
+            text_format.setSize(label_action.get('font_size', 10))
             if label_action['text_buffer_size_mm'] > 0:
-                # Add buffer settings
-                text_format = QgsTextFormat()
                 buffer_settings = QgsTextBufferSettings()
                 buffer_settings.setEnabled(True)
                 buffer_settings.setSize(label_action['text_buffer_size_mm'])
                 buffer_settings.setColor(QColor(255, 255, 255))
                 buffer_settings.setOpacity(0.8)
                 text_format.setBuffer(buffer_settings)
-                label_settings.setFormat(text_format)
-
+            label_settings.setFormat(text_format)
             layer_settings = QgsVectorLayerSimpleLabeling(label_settings)
             layer.setLabelsEnabled(True)
             layer.setLabeling(layer_settings)
@@ -395,6 +405,16 @@ class KuePlugin:
         if layer.isValid():
             QgsProject.instance().addMapLayer(layer)
 
+    def setLayerVisibility(self, visibility_action):
+        layers = QgsProject.instance().mapLayersByName(visibility_action['layer_name'])
+        if not layers:
+            return
+        layer = layers[0]
+        tree_layer = QgsProject.instance().layerTreeRoot().findLayer(layer)
+        if tree_layer:
+            tree_layer.setItemVisibilityChecked(visibility_action['visible'])
+            self.iface.mapCanvas().refresh()
+
     def handleKueError(self, msg):
         self.text_dock_widget.addMessage({"role": "error", "msg": msg, "has_button": False})
 
@@ -410,3 +430,5 @@ class KuePlugin:
         self.text_dock_widget.addMessage({"role": "user", "msg": text, "has_button": False})
         # self.updateChatDisplay()
 
+def is_layer_visible(layer):
+    return QgsProject.instance().layerTreeRoot().findLayer(layer).isVisible()
