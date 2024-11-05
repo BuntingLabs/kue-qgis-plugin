@@ -129,6 +129,9 @@ class KueSidebar(QDockWidget):
         console._console.console.pasteEditor()
 
     def onEnterClicked(self):
+        if self.textbox.text().startswith("/find"):
+            return
+
         text = self.textbox.text()
         history = [self.chat_display.item(i).text() for i in range(self.chat_display.count())]
         self.messageSent(text, history)

@@ -4,20 +4,39 @@ import os
 from osgeo import ogr, osr, gdal
 from time import time
 import numpy as np
+import hashlib
 from functools import lru_cache
 
+# I'm not sure sqlite3 is always available.
+KUE_SQLITE_PATH = os.path.join(os.path.dirname(__file__), 'find_file_index.sqlite')
+try:
+    import sqlite3
+    USE_SQLITE = True
+except ImportError:
+    USE_SQLITE = False
+
+from enum import IntEnum
+
+class FindType(IntEnum):
+    FIND_RASTER = 1
+    FIND_VECTOR_POINT = 2
+    FIND_VECTOR_LINE = 3
+    FIND_VECTOR_POLYGON = 4
+
 import csv
-from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsPointXY, QgsProject, QgsTask, QgsApplication
+from qgis.core import QgsCoordinateReferenceSystem, QgsTask, QgsApplication
 
 @lru_cache(maxsize=100)
-def transformation_for_crs_to_4326(authid: str):
-    source_srs = osr.SpatialReference()
-    source_srs.ImportFromEPSG(int(authid.split(':')[1]))
+def transformation_from_srs_to_4326(source_srs: osr.SpatialReference):
     target_srs = osr.SpatialReference()
     target_srs.ImportFromEPSG(4326)
     target_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
 
     return osr.CoordinateTransformation(source_srs, target_srs)
+
+# Returns 8 bytes of entropy (2^64 possibilities)
+def hash_file_path(file_path: str) -> bytes:
+    return hashlib.sha1(file_path.encode()).digest()[:8]
 
 def levenshtein_distance(s1: str, s2: str) -> int:
     if len(s1) < len(s2):
@@ -72,13 +91,30 @@ class IndexingTask(QgsTask):
         self.processed_files = 0
 
     def run(self):
+        if USE_SQLITE:
+            conn = sqlite3.connect(KUE_SQLITE_PATH)
+            c = conn.cursor()
+            c.execute('''CREATE TABLE IF NOT EXISTS files
+                        (file_path_hash BLOB PRIMARY KEY,
+                         bbox_minx REAL,
+                         bbox_miny REAL,
+                         bbox_maxx REAL,
+                         bbox_maxy REAL,
+                         cache_time INTEGER,
+                         geometry_type INTEGER
+                      )''')
+            conn.commit()
+
         try:
             files_to_index = []
             # Build index once
             for root, _, files in os.walk(self.dir_path):
                 if self.isCanceled():
+                    if USE_SQLITE:
+                        conn.close()
                     return False
-                if root.startswith('.'):
+                # Skip hidden directories
+                if any(part.startswith('.') for part in root.split(os.sep)):
                     continue
 
                 for file in files:
@@ -87,53 +123,96 @@ class IndexingTask(QgsTask):
 
             target_srs = osr.SpatialReference()
             target_srs.ImportFromEPSG(4326)
-            # Cache transformations
 
             for full_path in files_to_index:
                 if self.isCanceled():
+                    if USE_SQLITE:
+                        conn.close()
                     return False
 
                 self.processed_files += 1
                 self.setProgress(int(100 * self.processed_files / len(files_to_index)))
-
+                filename = os.path.basename(full_path)
                 stats = os.stat(full_path)
 
-                if file.endswith('.shp'):
+                if USE_SQLITE:
+                    needle_file_hash = hash_file_path(full_path)
+                    c.execute('SELECT bbox_minx, bbox_miny, bbox_maxx, bbox_maxy, geometry_type FROM files WHERE file_path_hash = ?', (needle_file_hash,))
+                    row = c.fetchone()
+                    if row:
+                        bbox = (row[0], row[1], row[2], row[3])
+                        find_type = FindType(row[4])
+                        file_type = 'raster' if find_type == FindType.FIND_RASTER else 'vector'
+                        if find_type == FindType.FIND_VECTOR_POINT:
+                            geom_type = 'point'
+                        elif find_type == FindType.FIND_VECTOR_LINE:
+                            geom_type = 'line'
+                        elif find_type == FindType.FIND_VECTOR_POLYGON:
+                            geom_type = 'polygon'
+                        else:
+                            geom_type = None
+
+                        self.files.append({
+                            'path': full_path,
+                            'last_accessed': int(stats.st_atime),
+                            'last_modified': int(stats.st_mtime),
+                            'type': file_type,
+                            'geometry_type': geom_type,
+                            'bbox': bbox
+                        })
+                        self.filename_trigrams[full_path] = get_trigrams(filename)
+                        continue
+
+                if filename.endswith('.shp'):
                     ds = ogr.Open(full_path)
                     if ds is None:
                         continue
                     layer = ds.GetLayer(0)
                     geom_type = ogr.GeometryTypeToName(layer.GetGeomType())
                     file_type = 'vector'
-                    layer_names = [layer.GetName()]
-                    
-                    # Get source SRS
-                    source_srs = layer.GetSpatialRef()
+                    # Get source SRS - Fix: Use GetSpatialRef() instead of GetProjection()
+                    source_crs = QgsCoordinateReferenceSystem(layer.GetSpatialRef().ExportToWkt())
 
                     # Get extent and transform if needed
-                    bbox = layer.GetExtent() # Returns (minx,maxx,miny,maxy)
-                    if source_srs and source_srs.GetAuthorityCode(None) != '4326':
-                        transform = transformation_for_crs_to_4326(f"EPSG:{source_srs.GetAuthorityCode(None)}")
-
-                        # Convert bbox corners preserving lon/lat order
-                        point_sw = ogr.CreateGeometryFromWkt(f'POINT ({bbox[0]} {bbox[2]})') # minx,miny
-                        point_ne = ogr.CreateGeometryFromWkt(f'POINT ({bbox[1]} {bbox[3]})') # maxx,maxy
-                        point_sw.Transform(transform)
-                        point_ne.Transform(transform)
-                        # Order as minx,miny,maxx,maxy (min_lon,min_lat,max_lon,max_lat)
-                        bbox = (
-                            point_sw.GetX(),
-                            point_sw.GetY(),
-                            point_ne.GetX(),
-                            point_ne.GetY()
-                        )
+                    try:
+                        bbox = layer.GetExtent() # Returns (minx,maxx,miny,maxy)
+                        if source_crs.isValid():
+                            source_srs = osr.SpatialReference()
+                            source_srs.ImportFromWkt(source_crs.toWkt())
+                            source_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+                            transform = transformation_from_srs_to_4326(source_srs)
+                            if not isinstance(transform, osr.CoordinateTransformation):
+                                print('vector no code for', os.path.basename(full_path))
+                                print('transformation failed', source_crs.authid(), transform)
+                                bbox = None
+                                continue
+                            # Convert bbox corners preserving lon/lat order
+                            point_sw = ogr.CreateGeometryFromWkt(f'POINT ({bbox[0]} {bbox[2]})') # minx,miny
+                            point_ne = ogr.CreateGeometryFromWkt(f'POINT ({bbox[1]} {bbox[3]})') # maxx,maxy
+                            try:
+                                point_sw.Transform(transform)
+                                point_ne.Transform(transform)
+                            except Exception as e:
+                                print('vector', source_crs)
+                            # Order as minx,miny,maxx,maxy (min_lon,min_lat,max_lon,max_lat)
+                            bbox = (
+                                point_sw.GetX(),
+                                point_sw.GetY(),
+                                point_ne.GetX(),
+                                point_ne.GetY()
+                            )
+                        else:
+                            print('vector no crs', os.path.basename(full_path), source_crs.authid())
+                    except Exception as e:
+                        print('no code for', os.path.basename(full_path))
+                        print('bbox failed', e)
+                        bbox = None
 
                     ds = None
                 else:
                     file_type = 'raster'
                     geom_type = None
                     bbox = None
-                    layer_names = []
 
                     ds = gdal.Open(full_path)
                     if ds:
@@ -150,18 +229,34 @@ class IndexingTask(QgsTask):
                             bbox = (minx, miny, maxx, maxy) # Already in min_lon,min_lat,max_lon,max_lat order
                             # Transform to EPSG:4326 if needed
                             source_crs = QgsCoordinateReferenceSystem(ds.GetProjection())
-                            if source_crs.isValid() and source_crs.authid() != 'EPSG:4326':
-                                try:
-                                    transform = transformation_for_crs_to_4326(source_crs.authid())
+                            if source_crs.isValid():
+                                source_srs = osr.SpatialReference()
+                                source_srs.ImportFromWkt(source_crs.toWkt())
+                                source_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+                                transform = transformation_from_srs_to_4326(source_srs)
 
-                                    point_sw = ogr.CreateGeometryFromWkt(f'POINT ({bbox[0]} {bbox[1]})') # min_lon,min_lat
-                                    point_ne = ogr.CreateGeometryFromWkt(f'POINT ({bbox[2]} {bbox[3]})') # max_lon,max_lat
+                                point_sw = ogr.CreateGeometryFromWkt(f'POINT ({bbox[0]} {bbox[1]})') # min_lon,min_lat
+                                point_ne = ogr.CreateGeometryFromWkt(f'POINT ({bbox[2]} {bbox[3]})') # max_lon,max_lat
+                                try:
                                     point_sw.Transform(transform)
                                     point_ne.Transform(transform)
-                                    bbox = (point_sw.GetX(), point_sw.GetY(), point_ne.GetX(), point_ne.GetY())
-                                except:
-                                    bbox = None
+                                except Exception as e:
+                                    pass
+                                    # print('raster', source_crs)
+                                bbox = (point_sw.GetX(), point_sw.GetY(), point_ne.GetX(), point_ne.GetY())
                     ds = None
+
+                if USE_SQLITE and bbox is not None:
+                    c.execute('INSERT OR REPLACE INTO files (file_path_hash, bbox_minx, bbox_miny, bbox_maxx, bbox_maxy, geometry_type) VALUES (?, ?, ?, ?, ?, ?)',
+                            (needle_file_hash,
+                             bbox[0] if bbox else None,
+                             bbox[1] if bbox else None,
+                             bbox[2] if bbox else None,
+                             bbox[3] if bbox else None,
+                             FindType.FIND_RASTER.value if file_type == 'raster' else
+                             FindType.FIND_VECTOR_POINT.value if geom_type == 'point' else
+                             FindType.FIND_VECTOR_LINE.value if geom_type == 'line' else
+                             FindType.FIND_VECTOR_POLYGON.value if geom_type == 'polygon' else None))
 
                 self.files.append({
                     'path': full_path,
@@ -169,17 +264,19 @@ class IndexingTask(QgsTask):
                     'last_modified': int(stats.st_mtime),
                     'type': file_type,
                     'geometry_type': geom_type,
-                    'layer_names': layer_names,
                     'bbox': bbox
                 })
-                # Precompute trigrams for filename
-                filename = os.path.basename(full_path)
                 self.filename_trigrams[full_path] = get_trigrams(filename)
+
+            if USE_SQLITE:
+                conn.commit()
+                conn.close()
 
             return True
 
         except Exception as e:
             self.exception = e
+            print('got caught exception', e)
             return False
 
     def finished(self, result):
@@ -197,18 +294,19 @@ class KueFind:
     def index(self, dir_path: str):
         # Create and start the indexing task
         self.index_task = IndexingTask(dir_path)
-        
+
         def task_completed(exception=None, result=None):
             if exception is None:
                 self.files = self.index_task.files
                 self.filename_trigrams = self.index_task.filename_trigrams
-            self.index_task_trash.append(self.index_task)  # Prevent garbage collection
             self.index_task = None
+            print('indexing task finished', exception)
             
         self.index_task.taskCompleted.connect(task_completed)
         self.index_task.taskTerminated.connect(task_completed)
-        
+
         QgsApplication.taskManager().addTask(self.index_task)
+        self.index_task_trash.append(self.index_task)  # Prevent garbage collection
 
     def search(self, query: str, n: int = 12):
         # Start indexing if not already started
