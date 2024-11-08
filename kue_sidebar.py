@@ -102,13 +102,13 @@ class KueSidebar(QDockWidget):
         self.scroll_area.setWidget(self.chat_display)
 
         self.kue_layout = QVBoxLayout()
-        self.kue_layout.addWidget(QLabel("Kue chat"))
+        self.kue_layout.setContentsMargins(0, 0, 0, 0)
         self.kue_layout.addWidget(self.scroll_area)
         self.kue_widget.setLayout(self.kue_layout)
 
         self.find_widget = QWidget()
         self.find_layout = QVBoxLayout()
-        self.find_layout.addWidget(QLabel("Find"))
+        self.find_layout.setContentsMargins(0, 0, 0, 0)
 
         self.find_results = QListWidget()
         self.find_results.setWordWrap(True)
