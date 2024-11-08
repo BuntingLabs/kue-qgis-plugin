@@ -252,9 +252,9 @@ class IndexingTask(QgsTask):
                              bbox[2] if bbox else None,
                              bbox[3] if bbox else None,
                              FindType.FIND_RASTER.value if file_type == 'raster' else
-                             FindType.FIND_VECTOR_POINT.value if geom_type == 'point' else
-                             FindType.FIND_VECTOR_LINE.value if geom_type == 'line' else
-                             FindType.FIND_VECTOR_POLYGON.value if geom_type == 'polygon' else None))
+                             FindType.FIND_VECTOR_POINT.value if geom_type == 'Point' else
+                             FindType.FIND_VECTOR_LINE.value if geom_type == 'Line String' else
+                             FindType.FIND_VECTOR_POLYGON.value if geom_type == 'Polygon' else None))
 
                 self.files.append({
                     'path': full_path,

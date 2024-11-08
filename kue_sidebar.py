@@ -201,8 +201,10 @@ class KueSidebar(QDockWidget):
                         item.setIcon(QgsIconUtils.iconLine())
                     else:
                         item.setIcon(QgsIconUtils.iconPolygon())
-                else:
+                elif file_type == 'raster':
                     item.setIcon(QgsIconUtils.iconRaster())
+                else:
+                    item.setIcon(QgsIconUtils.iconDefaultLayer())
                 self.find_results.addItem(item)
         else:
             self.above_mb_widget.setCurrentIndex(0)
