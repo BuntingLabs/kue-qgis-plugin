@@ -226,7 +226,7 @@ class KuePlugin:
                 # Get display name for geoprocessing algorithm
                 for alg in QgsApplication.processingRegistry().algorithms():
                     if alg.id() == action['geoprocessing']['id']:
-                        self.text_dock_widget.addMessage({"role": "system", "msg": f"Running {alg.displayName()}..."})
+                        self.text_dock_widget.addMessage({"role": "geoprocessing", "msg": f"Running {alg.displayName()}..."})
                         # self.updateChatDisplay()
                         break
 

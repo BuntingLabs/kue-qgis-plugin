@@ -314,13 +314,25 @@ class KueChatDelegate(QStyledItemDelegate):
         if not msg:
             return
 
-        # Draw message text
-        text_color = (QColor(255, 0, 0) if msg['role'] == 'error'
+        # Icons specific to what's happening
+        hasIcon = False
+        if msg['role'] == 'geoprocessing':
+            hasIcon = True
+            icon = QIcon(':/images/themes/default/processingAlgorithm.svg')
+
+            icon_rect = option.rect.adjusted(4, 4, -option.rect.width() + 24, -4)
+            icon.paint(painter, icon_rect)
+
+        # Error if not selected
+        text_color = (QColor(255, 0, 0) if (msg['role'] == 'error' and not (option.state & QStyle.State_Selected))
                      else option.palette.highlightedText().color() if option.state & QStyle.State_Selected
                      else option.palette.text().color())
         painter.setPen(text_color)
 
-        text_rect = option.rect.adjusted(8, 4, -8, -4)
+        if hasIcon:
+            text_rect = option.rect.adjusted(28, 4, -8, -4)
+        else:
+            text_rect = option.rect.adjusted(8, 4, -8, -4)
         if msg.get('has_button'):
             text_rect.setRight(text_rect.right() - 70)  # Make room for button
 
@@ -331,7 +343,11 @@ class KueChatDelegate(QStyledItemDelegate):
 
         # Use drawText with TextWordWrap flag for multiline support
         alignment = Qt.AlignRight if msg['role'] == 'user' else Qt.AlignLeft
-        painter.drawText(text_rect, alignment | Qt.AlignVCenter | Qt.TextWordWrap, msg['msg'])
+        painter.drawText(
+            text_rect,
+            alignment | Qt.AlignVCenter | Qt.TextWordWrap,
+            msg['msg']
+        )
 
     def editorEvent(self, event, model, option, index):
         if event.type() == event.MouseButtonPress:
