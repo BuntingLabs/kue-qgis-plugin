@@ -24,7 +24,10 @@ class FindType(IntEnum):
     FIND_VECTOR_POLYGON = 4
 
 import csv
-from qgis.core import QgsCoordinateReferenceSystem, QgsTask, QgsApplication
+from qgis.core import (
+    QgsCoordinateReferenceSystem, QgsTask, QgsApplication,
+    Qgis, QgsMessageLog
+)
 
 @lru_cache(maxsize=100)
 def transformation_from_srs_to_4326(source_srs: osr.SpatialReference):
@@ -82,6 +85,9 @@ def get_trigrams(text: str) -> set:
     return {text[i:i+3] for i in range(len(text)-2)} if len(text) > 2 else {text}
 
 class IndexingTask(QgsTask):
+    VECTOR_EXTENSIONS = ('.shp', '.gpkg', '.fgb')
+    RASTER_EXTENSIONS = ('.tif',)
+
     def __init__(self, dir_path, description='Indexing files for Kue /find'):
         super().__init__(description, QgsTask.CanCancel)
         self.dir_path = dir_path
@@ -108,6 +114,7 @@ class IndexingTask(QgsTask):
         try:
             files_to_index = []
             # Build index once
+            target_extensions = self.VECTOR_EXTENSIONS + self.RASTER_EXTENSIONS
             for root, _, files in os.walk(self.dir_path):
                 if self.isCanceled():
                     if USE_SQLITE:
@@ -118,7 +125,7 @@ class IndexingTask(QgsTask):
                     continue
 
                 for file in files:
-                    if file.endswith(('.shp', '.tif')) and not file.startswith('.'):
+                    if file.endswith(target_extensions) and not file.startswith('.'):
                         files_to_index.append(os.path.join(root, file))
 
             target_srs = osr.SpatialReference()
@@ -160,7 +167,7 @@ class IndexingTask(QgsTask):
                         self.filename_trigrams[full_path] = get_trigrams(full_path)
                         continue
 
-                if filename.endswith('.shp'):
+                if filename.endswith(self.VECTOR_EXTENSIONS):
                     ds = ogr.Open(full_path)
                     if ds is None:
                         continue
@@ -180,8 +187,7 @@ class IndexingTask(QgsTask):
                             source_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
                             transform = transformation_from_srs_to_4326(source_srs)
                             if not isinstance(transform, osr.CoordinateTransformation):
-                                print('vector no code for', os.path.basename(full_path))
-                                print('transformation failed', source_crs.authid(), transform)
+                                QgsMessageLog.logMessage(f"No coordinate transform for {os.path.basename(full_path)}", 'KueFind', level=Qgis.Warning)
                                 bbox = None
                                 continue
                             # Convert bbox corners preserving lon/lat order
@@ -190,24 +196,25 @@ class IndexingTask(QgsTask):
                             try:
                                 point_sw.Transform(transform)
                                 point_ne.Transform(transform)
+
+                                # Order as minx,miny,maxx,maxy (min_lon,min_lat,max_lon,max_lat)
+                                bbox = (
+                                    point_sw.GetX(),
+                                    point_sw.GetY(),
+                                    point_ne.GetX(),
+                                    point_ne.GetY()
+                                )
                             except Exception as e:
-                                print('vector', source_crs)
-                            # Order as minx,miny,maxx,maxy (min_lon,min_lat,max_lon,max_lat)
-                            bbox = (
-                                point_sw.GetX(),
-                                point_sw.GetY(),
-                                point_ne.GetX(),
-                                point_ne.GetY()
-                            )
+                                QgsMessageLog.logMessage(f"Coordinate transform failed for {os.path.basename(full_path)}", 'KueFind', level=Qgis.Warning)
+                                bbox = None
                         else:
-                            print('vector no crs', os.path.basename(full_path), source_crs.authid())
+                            QgsMessageLog.logMessage(f"No CRS for {os.path.basename(full_path)}", 'KueFind', level=Qgis.Warning)
                     except Exception as e:
-                        print('no code for', os.path.basename(full_path))
-                        print('bbox failed', e)
+                        QgsMessageLog.logMessage(f"Failed to get extent for {os.path.basename(full_path)}", 'KueFind', level=Qgis.Warning)
                         bbox = None
 
                     ds = None
-                else:
+                elif filename.endswith(self.RASTER_EXTENSIONS):
                     file_type = 'raster'
                     geom_type = None
                     bbox = None
@@ -238,10 +245,12 @@ class IndexingTask(QgsTask):
                                 try:
                                     point_sw.Transform(transform)
                                     point_ne.Transform(transform)
+
+                                    bbox = (point_sw.GetX(), point_sw.GetY(), point_ne.GetX(), point_ne.GetY())
                                 except Exception as e:
-                                    pass
-                                    # print('raster', source_crs)
-                                bbox = (point_sw.GetX(), point_sw.GetY(), point_ne.GetX(), point_ne.GetY())
+                                    QgsMessageLog.logMessage(f"Coordinate transform failed for {os.path.basename(full_path)}", 'KueFind', level=Qgis.Warning)
+                                    bbox = None
+
                     ds = None
 
                 if USE_SQLITE and bbox is not None:
@@ -274,7 +283,7 @@ class IndexingTask(QgsTask):
 
         except Exception as e:
             self.exception = e
-            print('got caught exception', e)
+            QgsMessageLog.logMessage(f"Got caught exception: {e}", 'KueFind', level=Qgis.Warning)
             return False
 
     def finished(self, result):
