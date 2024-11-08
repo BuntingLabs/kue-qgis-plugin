@@ -312,7 +312,7 @@ class KueChatDelegate(QStyledItemDelegate):
 
         # Draw message text
         text_color = (QColor(255, 0, 0) if msg['role'] == 'error'
-                     else option.palette.text().color() if msg['role'] == 'system'
+                     else option.palette.highlightedText().color() if option.state & QStyle.State_Selected
                      else option.palette.text().color())
         painter.setPen(text_color)
 
