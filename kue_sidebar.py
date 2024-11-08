@@ -11,7 +11,7 @@ from qgis.core import QgsIconUtils
 
 from typing import Callable
 import os
-from .kue_find import KueFind
+from .kue_find import KueFind, VECTOR_EXTENSIONS, RASTER_EXTENSIONS
 
 class KueSidebar(QDockWidget):
     def __init__(self, iface, messageSent: Callable, authenticateUser: Callable, kue_find: KueFind):
@@ -116,10 +116,9 @@ class KueSidebar(QDockWidget):
         self.find_results.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.find_results.setTextElideMode(Qt.ElideNone)
         # Handle opening a file
-        # self.find_results.itemDoubleClicked.connect(self.onFindResultOpened)
-        # delegation
         delegate = KueFileResult()
-        delegate.double_clicked = self.onFindResultOpened
+        delegate.open_raster = self.openRasterFile
+        delegate.open_vector = self.openVectorFile
         self.find_results.setItemDelegate(delegate)
 
         self.find_layout.addWidget(self.find_results)
@@ -170,13 +169,12 @@ class KueSidebar(QDockWidget):
         self.messageSent(text, history)
         self.textbox.clear()
 
-    def onFindResultOpened(self, path: str):
-        if path.endswith('.shp'):
-            vlayer = QgsVectorLayer(path, os.path.basename(path), 'ogr')
-            QgsProject.instance().addMapLayer(vlayer)
-        elif path.endswith('.tif'):
-            rlayer = QgsRasterLayer(path, os.path.basename(path))
-            QgsProject.instance().addMapLayer(rlayer)
+    def openRasterFile(self, path: str):
+        rlayer = QgsRasterLayer(path, os.path.basename(path))
+        QgsProject.instance().addMapLayer(rlayer)
+    def openVectorFile(self, path: str):
+        vlayer = QgsVectorLayer(path, os.path.basename(path), 'ogr')
+        QgsProject.instance().addMapLayer(vlayer)
 
     def onTextUpdate(self, text):
         if text.startswith("/find "):
@@ -214,15 +212,21 @@ from PyQt5.QtCore import QSize
 from PyQt5.QtWidgets import QStyle
 
 class KueFileResult(QAbstractItemDelegate):
-    def __init__(self, double_clicked=None):
+    def __init__(self, open_vector=None, open_raster=None):
         super().__init__()
-        self.double_clicked = double_clicked  # Add callback property
+        self.open_vector = open_vector
+        self.open_raster = open_raster
 
     def editorEvent(self, event, model, option, index):
-        if event.type() == event.MouseButtonDblClick and self.double_clicked:
+        if event.type() == event.MouseButtonDblClick:
             path = index.data(Qt.UserRole)["path"]
             path = path.replace("~", os.path.expanduser("~"))
-            self.double_clicked(path)
+
+            # Trigger appropriate open
+            if path.endswith(VECTOR_EXTENSIONS) and self.open_vector:
+                self.open_vector(path)
+            elif path.endswith(RASTER_EXTENSIONS) and self.open_raster:
+                self.open_raster(path)
             return True
         return False
 

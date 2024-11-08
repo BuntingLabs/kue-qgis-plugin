@@ -1,11 +1,19 @@
 # Copyright Bunting Labs, Inc. 2024
 
 import os
-from osgeo import ogr, osr, gdal
+from enum import IntEnum
 from time import time
-import numpy as np
 import hashlib
 from functools import lru_cache
+import csv
+
+from osgeo import ogr, osr, gdal
+import numpy as np
+
+from qgis.core import (
+    QgsCoordinateReferenceSystem, QgsTask, QgsApplication,
+    Qgis, QgsMessageLog
+)
 
 # I'm not sure sqlite3 is always available.
 KUE_SQLITE_PATH = os.path.join(os.path.dirname(__file__), 'find_file_index.sqlite')
@@ -15,19 +23,14 @@ try:
 except ImportError:
     USE_SQLITE = False
 
-from enum import IntEnum
-
 class FindType(IntEnum):
     FIND_RASTER = 1
     FIND_VECTOR_POINT = 2
     FIND_VECTOR_LINE = 3
     FIND_VECTOR_POLYGON = 4
 
-import csv
-from qgis.core import (
-    QgsCoordinateReferenceSystem, QgsTask, QgsApplication,
-    Qgis, QgsMessageLog
-)
+VECTOR_EXTENSIONS = ('.shp', '.gpkg', '.fgb')
+RASTER_EXTENSIONS = ('.tif',)
 
 @lru_cache(maxsize=100)
 def transformation_from_srs_to_4326(source_srs: osr.SpatialReference):
@@ -85,9 +88,6 @@ def get_trigrams(text: str) -> set:
     return {text[i:i+3] for i in range(len(text)-2)} if len(text) > 2 else {text}
 
 class IndexingTask(QgsTask):
-    VECTOR_EXTENSIONS = ('.shp', '.gpkg', '.fgb')
-    RASTER_EXTENSIONS = ('.tif',)
-
     def __init__(self, dir_path, description='Indexing files for Kue /find'):
         super().__init__(description, QgsTask.CanCancel)
         self.dir_path = dir_path
@@ -114,7 +114,7 @@ class IndexingTask(QgsTask):
         try:
             files_to_index = []
             # Build index once
-            target_extensions = self.VECTOR_EXTENSIONS + self.RASTER_EXTENSIONS
+            target_extensions = VECTOR_EXTENSIONS + RASTER_EXTENSIONS
             for root, _, files in os.walk(self.dir_path):
                 if self.isCanceled():
                     if USE_SQLITE:
@@ -167,7 +167,7 @@ class IndexingTask(QgsTask):
                         self.filename_trigrams[full_path] = get_trigrams(full_path)
                         continue
 
-                if filename.endswith(self.VECTOR_EXTENSIONS):
+                if filename.endswith(VECTOR_EXTENSIONS):
                     ds = ogr.Open(full_path)
                     if ds is None:
                         continue
@@ -214,7 +214,7 @@ class IndexingTask(QgsTask):
                         bbox = None
 
                     ds = None
-                elif filename.endswith(self.RASTER_EXTENSIONS):
+                elif filename.endswith(RASTER_EXTENSIONS):
                     file_type = 'raster'
                     geom_type = None
                     bbox = None
