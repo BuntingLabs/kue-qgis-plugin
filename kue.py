@@ -125,6 +125,7 @@ class KuePlugin:
         project_crs = QgsProject.instance().crs()
         layers = QgsProject.instance().mapLayers().values()
         vector_layers = [layer for layer in layers if isinstance(layer, QgsVectorLayer)]
+        raster_layers = [layer for layer in layers if isinstance(layer, QgsRasterLayer)]
 
         # Transform bounding box to EPSG:4326 if needed
         qgis_bbox = self.iface.mapCanvas().extent()
@@ -161,6 +162,13 @@ class KuePlugin:
                     } for feature in islice(layer.getFeatures(), 1)]
                 }
                 for layer in vector_layers
+            ],
+            "raster_layers": [
+                {
+                    "layer_name": layer.name(),
+                    "visible": is_layer_visible(layer)
+                }
+                for layer in raster_layers
             ]
         }
 
