@@ -58,13 +58,10 @@ class KuePlugin:
         # Load the greeting message 
         locale = QSettings().value('locale/userLocale', 'en_US')
         lang = locale[2:] if isinstance(locale, str) and len(locale) > 2 else 'en'
-        starter_messages = KUE_INTRODUCTION_MESSAGES.get(
+        self.starter_messages = KUE_INTRODUCTION_MESSAGES.get(
             lang,
             KUE_INTRODUCTION_MESSAGES['en']
         )
-        self.context_messages = [{
-            "role": "assistant", "msg": msg
-        } for msg in starter_messages]
 
         self.task_trash = []
 
@@ -83,6 +80,9 @@ class KuePlugin:
             self.authenticateUser,
             self.kue_find
         )
+
+        for msg in self.starter_messages:
+            self.text_dock_widget.addMessage({"role": "assistant", "msg": msg})
 
     def unload(self):
         self.iface.removeToolBarIcon(self.kue_action)
