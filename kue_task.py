@@ -6,6 +6,8 @@ from qgis.core import QgsTask, QgsNetworkAccessManager
 from qgis.PyQt.QtCore import QSettings, pyqtSignal, QUrl, QEventLoop
 from qgis.PyQt.QtNetwork import QNetworkRequest, QNetworkReply
 from qgis.PyQt.QtCore import QByteArray
+from qgis.core import QgsMessageLog, Qgis
+
 
 class KueTask(QgsTask):
 
@@ -57,7 +59,12 @@ class KueTask(QgsTask):
                 QSettings().remove("buntinglabs-kue/auth_token")
                 self.errorReceived.emit('You need to link your account to use Kue. Please re-open this tab.')
                 return False
+            # Unexpected server error
+            elif reply.attribute(QNetworkRequest.HttpStatusCodeAttribute) == 500:
+                self.errorReceived.emit("Sorry: unexpected bug on Kue's server, our team will investigate.")
+                return False
             else:
+                QgsMessageLog.logMessage(f'Kue error code: {reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)}', 'Kue', Qgis.Warning)
                 self.errorReceived.emit(f'Kue error: {reply.errorString()}')
                 return False
 
