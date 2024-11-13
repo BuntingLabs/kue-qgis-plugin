@@ -26,6 +26,7 @@ from qgis.core import (
 )
 from qgis import processing
 from qgis.core import QgsFillSymbol
+from processing.core.ProcessingConfig import ProcessingConfig
 
 from .kue_task import KueTask
 from .kue_messages import KUE_INTRODUCTION_MESSAGES
@@ -230,10 +231,21 @@ class KuePlugin:
                         # self.updateChatDisplay()
                         break
 
+                # We should handle invalid geometries.
+                previous_invalid_setting = ProcessingConfig.getSetting(ProcessingConfig.FILTER_INVALID_GEOMETRIES)
+                try:
+                    skip_idx = ProcessingConfig.settings['FILTER_INVALID_GEOMETRIES'].options.index('Skip (ignore) features with invalid geometries')
+                    ProcessingConfig.setSettingValue(ProcessingConfig.FILTER_INVALID_GEOMETRIES, skip_idx)
+                except ValueError:
+                    # Protect ourselves in case the setting is different.
+                    pass
+
                 processing.runAndLoadResults(
                     action['geoprocessing']['id'],
                     action['geoprocessing']['parameters']
                 )
+                # Revert back
+                ProcessingConfig.setSettingValue(ProcessingConfig.FILTER_INVALID_GEOMETRIES, previous_invalid_setting)
             if action.get('display_datasets'):
                 self.displayDatasets(action['display_datasets'])
             if action.get('set_projection'):
