@@ -348,8 +348,10 @@ class KuePlugin:
 
             # Calculate class breaks using equal interval
             field_index = layer.fields().indexFromName(field_name)
-            min_val = layer.minimumValue(field_index)
-            max_val = layer.maximumValue(field_index)
+            min_val, max_val = layer.minimumAndMaximumValue(field_index)
+            if min_val is None or max_val is None:
+                self.handleKueError(f"Can't read min/max values for {layer.name()}, try re-exporting to a Shapefile.")
+                return
             interval = (max_val - min_val) / classes
 
             # Choose one of 4 diverging color ramps randomly
