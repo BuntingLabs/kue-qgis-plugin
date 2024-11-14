@@ -7,7 +7,7 @@ from qgis.PyQt.QtCore import QSettings, pyqtSignal, QUrl, QEventLoop
 from qgis.PyQt.QtNetwork import QNetworkRequest, QNetworkReply
 from qgis.PyQt.QtCore import QByteArray
 from qgis.core import QgsMessageLog, Qgis
-
+from PyQt5.QtGui import QDesktopServices
 
 class KueTask(QgsTask):
 
@@ -56,8 +56,13 @@ class KueTask(QgsTask):
                 return True
             # Handle auth failed specifically
             elif reply.attribute(QNetworkRequest.HttpStatusCodeAttribute) == 403:
-                QSettings().remove("buntinglabs-kue/auth_token")
-                self.errorReceived.emit('You need to link your account to use Kue. Please re-open this tab.')
+                kue_token = QSettings().value("buntinglabs-kue/auth_token", "")
+                if kue_token:
+                    self.errorReceived.emit('Sign in to buntinglabs.com to connect your account. Opening a new tab.')
+                    QDesktopServices.openUrl(QUrl(f"https://buntinglabs.com/account/register?kue_token={kue_token}"))
+                else:
+                    self.errorReceived.emit('Restart Kue (or QGIS) to start using Kue.')
+
                 return False
             # Unexpected server error
             elif reply.attribute(QNetworkRequest.HttpStatusCodeAttribute) == 500:
