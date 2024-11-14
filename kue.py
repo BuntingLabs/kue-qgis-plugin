@@ -29,6 +29,7 @@ from qgis.core import QgsFillSymbol
 from processing.core.ProcessingConfig import ProcessingConfig
 
 from .kue_task import KueTask
+from .kue_geoprocessing import KueGeoprocessingTask
 from .kue_messages import KUE_INTRODUCTION_MESSAGES
 from .kue_sidebar import KueSidebar
 from .kue_find import KueFind
@@ -191,8 +192,14 @@ class KuePlugin:
         )
 
     def handleKueResponse(self, data):
+        geoprocessing_actions = []
+
         for action in data.get('actions', []):
-            # Sometimes they get put in the same dict (bad, but whatever)
+            if action.get('geoprocessing'):
+                geoprocessing_actions.append(action)
+                continue
+
+            # Handle all non-geoprocessing actions immediately
             if action.get('add_xyz_layer'):
                 self.addXYZLayer(action['add_xyz_layer'])
             if action.get('add_wfs_layer'):
@@ -221,35 +228,17 @@ class KuePlugin:
                 self.setVectorLayerSubsetString(action['set_vector_layer_subset_string'])
             if action.get('chat'):
                 self.text_dock_widget.addMessage({"role": "assistant", "msg": action['chat']['message']})
-                # self.updateChatDisplay()
-            if action.get('geoprocessing'):
-                # Give system message
-                # Get display name for geoprocessing algorithm
-                alg = QgsApplication.processingRegistry().algorithmById(action['geoprocessing']['id'])
-                if not alg:
-                    self.handleKueError(f"Geoprocessing algorithm not found: {action['geoprocessing']['id']}")
-                    return
-                self.text_dock_widget.addMessage({"role": "geoprocessing", "msg": f"Running {alg.displayName()}..."})
-
-                # We should handle invalid geometries.
-                previous_invalid_setting = ProcessingConfig.getSetting(ProcessingConfig.FILTER_INVALID_GEOMETRIES)
-                try:
-                    skip_idx = ProcessingConfig.settings['FILTER_INVALID_GEOMETRIES'].options.index('Skip (ignore) features with invalid geometries')
-                    ProcessingConfig.setSettingValue(ProcessingConfig.FILTER_INVALID_GEOMETRIES, skip_idx)
-                except ValueError:
-                    # Protect ourselves in case the setting is different.
-                    pass
-
-                processing.runAndLoadResults(
-                    alg,
-                    action['geoprocessing']['parameters']
-                )
-                # Revert back
-                ProcessingConfig.setSettingValue(ProcessingConfig.FILTER_INVALID_GEOMETRIES, previous_invalid_setting)
             if action.get('display_datasets'):
                 self.displayDatasets(action['display_datasets'])
             if action.get('set_projection'):
                 self.setProjection(action['set_projection'])
+
+        # Execute geoprocessing actions as a task if there are any
+        if geoprocessing_actions:
+            task = KueGeoprocessingTask(self, geoprocessing_actions)
+            task.errorReceived.connect(self.handleKueError)
+            QgsApplication.taskManager().addTask(task)
+            self.task_trash.append(task)  # Prevent garbage collection
 
     def displayDatasets(self, action):
         message = action['message']
