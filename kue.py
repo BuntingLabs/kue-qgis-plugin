@@ -225,11 +225,11 @@ class KuePlugin:
             if action.get('geoprocessing'):
                 # Give system message
                 # Get display name for geoprocessing algorithm
-                for alg in QgsApplication.processingRegistry().algorithms():
-                    if alg.id() == action['geoprocessing']['id']:
-                        self.text_dock_widget.addMessage({"role": "geoprocessing", "msg": f"Running {alg.displayName()}..."})
-                        # self.updateChatDisplay()
-                        break
+                alg = QgsApplication.processingRegistry().algorithmById(action['geoprocessing']['id'])
+                if not alg:
+                    self.handleKueError(f"Geoprocessing algorithm not found: {action['geoprocessing']['id']}")
+                    return
+                self.text_dock_widget.addMessage({"role": "geoprocessing", "msg": f"Running {alg.displayName()}..."})
 
                 # We should handle invalid geometries.
                 previous_invalid_setting = ProcessingConfig.getSetting(ProcessingConfig.FILTER_INVALID_GEOMETRIES)
@@ -241,7 +241,7 @@ class KuePlugin:
                     pass
 
                 processing.runAndLoadResults(
-                    action['geoprocessing']['id'],
+                    alg,
                     action['geoprocessing']['parameters']
                 )
                 # Revert back
