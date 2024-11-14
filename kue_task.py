@@ -54,6 +54,9 @@ class KueTask(QgsTask):
                 data = json.loads(content)
                 self.responseReceived.emit(data)
                 return True
+            elif reply.attribute(QNetworkRequest.HttpStatusCodeAttribute) == 402:
+                self.errorReceived.emit('Kue requires a subscription. Go to buntinglabs.com/dashboard to enter your payment information.')
+                return False
             # Handle auth failed specifically
             elif reply.attribute(QNetworkRequest.HttpStatusCodeAttribute) == 403:
                 kue_token = QSettings().value("buntinglabs-kue/auth_token", "")
