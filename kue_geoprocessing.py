@@ -1,6 +1,6 @@
 # Copyright 2024 Bunting Labs, Inc.
 
-from qgis.core import QgsTask, QgsApplication
+from qgis.core import QgsTask, QgsApplication, QgsProject
 from qgis.PyQt.QtCore import pyqtSignal
 from qgis import processing
 from processing.core.ProcessingConfig import ProcessingConfig
@@ -20,6 +20,9 @@ class KueGeoprocessingTask(QgsTask):
 
     def run(self):
         try:
+            # Special values
+            SEC_LAST_LAYER_ID = None
+
             for action in self.actions:
                 if not action.get('geoprocessing'):
                     continue
@@ -38,10 +41,21 @@ class KueGeoprocessingTask(QgsTask):
                 except ValueError:
                     pass
 
-                processing.runAndLoadResults(
+                # Replace any parameters with special values
+                for key, value in action['geoprocessing']['parameters'].items():
+                    if value == '§LAST_LAYER' and SEC_LAST_LAYER_ID:
+                        last_layer_source = QgsProject.instance().mapLayer(SEC_LAST_LAYER_ID)
+                        if last_layer_source:
+                            action['geoprocessing']['parameters'][key] = last_layer_source.source()
+
+                output = processing.runAndLoadResults(
                     alg,
                     action['geoprocessing']['parameters']
                 )
+                if 'OUTPUT' in output:
+                    # It gives us the layer ID
+                    SEC_LAST_LAYER_ID = output['OUTPUT']
+
                 ProcessingConfig.setSettingValue(ProcessingConfig.FILTER_INVALID_GEOMETRIES, previous_invalid_setting)
 
             return True
