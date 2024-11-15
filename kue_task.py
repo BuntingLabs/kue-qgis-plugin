@@ -28,7 +28,7 @@ class KueTask(QgsTask):
 
             request = QNetworkRequest(url)
             request.setHeader(QNetworkRequest.ContentTypeHeader, "multipart/form-data; boundary=boundary")
-            request.setRawHeader(b"x-kue-token", QSettings().value("buntinglabs-kue/auth_token", "").encode('utf-8'))
+            request.setRawHeader(b"x-kue-token", QSettings().value("buntinglabs-kue/auth_token", "NO_AUTH_TOKEN").encode('utf-8'))
 
             post_data = QByteArray()
             post_data.append(b"--boundary\r\n")
