@@ -150,6 +150,7 @@ class KuePlugin:
             ],
             "vector_layers": [
                 {
+                    "id": layer.id(),
                     "layer_name": layer.name(),
                     "source": layer.source(),
                     "visible": is_layer_visible(layer),
@@ -251,10 +252,13 @@ class KuePlugin:
         # self.updateChatDisplay()
 
     def setVectorLabels(self, label_action):
-        layers = QgsProject.instance().mapLayersByName(label_action['layer_name'])
-        if not layers:
-            return
-        layer = layers[0]
+        if 'layer_id' in label_action:
+            layer = QgsProject.instance().mapLayer(label_action['layer_id'])
+        else:
+            layers = QgsProject.instance().mapLayersByName(label_action['layer_name'])
+            if not layers:
+                return
+            layer = layers[0]
         if isinstance(layer, QgsVectorLayer):
             label_settings = QgsPalLayerSettings()
             label_settings.fieldName = label_action['attribute_name']
@@ -288,15 +292,24 @@ class KuePlugin:
             self.handleKueError(f"Failed to zoom to bounding box: {e}")
 
     def openAttributeTable(self, layer_name):
-        layers = QgsProject.instance().mapLayersByName(layer_name)
-        if not layers:
-            return
-        layer = layers[0]
+        if 'layer_id' in layer_name:  # Assuming layer_name could be a dict with layer_id
+            layer = QgsProject.instance().mapLayer(layer_name['layer_id'])
+        else:
+            layers = QgsProject.instance().mapLayersByName(layer_name)
+            if not layers:
+                return
+            layer = layers[0]
         if layer and isinstance(layer, QgsVectorLayer):
             self.iface.openAttributeTable(layer)
 
     def setVectorLayerSubsetString(self, subset_action):
-        layer = QgsProject.instance().mapLayersByName(subset_action['layer_name'])[0]
+        if 'layer_id' in subset_action:
+            layer = QgsProject.instance().mapLayer(subset_action['layer_id'])
+        else:
+            layers = QgsProject.instance().mapLayersByName(subset_action['layer_name'])
+            if not layers:
+                return
+            layer = layers[0]
         if layer and isinstance(layer, QgsVectorLayer):
             if not layer.setSubsetString(subset_action['subset_string']):
                 self.text_dock_widget.addMessage({"role": "error", "msg": "Failed to set subset string", "has_button": False})
@@ -305,7 +318,13 @@ class KuePlugin:
             layer.triggerRepaint()
 
     def setVectorSingleSymbology(self, symbology_action):
-        layer = QgsProject.instance().mapLayersByName(symbology_action['layer_name'])[0]
+        if 'layer_id' in symbology_action:
+            layer = QgsProject.instance().mapLayer(symbology_action['layer_id'])
+        else:
+            layers = QgsProject.instance().mapLayersByName(symbology_action['layer_name'])
+            if not layers:
+                return
+            layer = layers[0]
         if layer and isinstance(layer, QgsVectorLayer):
             symbol = QgsSymbol.defaultSymbol(layer.geometryType())
             symbol.setColor(QColor(symbology_action['color']))
@@ -315,7 +334,13 @@ class KuePlugin:
             layer.triggerRepaint()
 
     def setVectorCategorizedSymbol(self, symbology_action):
-        layer = QgsProject.instance().mapLayersByName(symbology_action['layer_name'])[0]
+        if 'layer_id' in symbology_action:
+            layer = QgsProject.instance().mapLayer(symbology_action['layer_id'])
+        else:
+            layers = QgsProject.instance().mapLayersByName(symbology_action['layer_name'])
+            if not layers:
+                return
+            layer = layers[0]
         if layer and isinstance(layer, QgsVectorLayer):
             field_name = symbology_action['field_name']
             unique_values = layer.uniqueValues(layer.fields().indexFromName(field_name))
@@ -335,7 +360,13 @@ class KuePlugin:
             layer.triggerRepaint()
 
     def setVectorGraduatedSymbol(self, symbology_action):
-        layer = QgsProject.instance().mapLayersByName(symbology_action['layer_name'])[0]
+        if 'layer_id' in symbology_action:
+            layer = QgsProject.instance().mapLayer(symbology_action['layer_id'])
+        else:
+            layers = QgsProject.instance().mapLayersByName(symbology_action['layer_name'])
+            if not layers:
+                return
+            layer = layers[0]
         if layer and isinstance(layer, QgsVectorLayer):
             field_name = symbology_action['field_name']
             classes = symbology_action['classes']
@@ -422,10 +453,13 @@ class KuePlugin:
             QgsProject.instance().addMapLayer(layer)
 
     def setLayerVisibility(self, visibility_action):
-        layers = QgsProject.instance().mapLayersByName(visibility_action['layer_name'])
-        if not layers:
-            return
-        layer = layers[0]
+        if 'layer_id' in visibility_action:
+            layer = QgsProject.instance().mapLayer(visibility_action['layer_id'])
+        else:
+            layers = QgsProject.instance().mapLayersByName(visibility_action['layer_name'])
+            if not layers:
+                return
+            layer = layers[0]
         tree_layer = QgsProject.instance().layerTreeRoot().findLayer(layer)
         if tree_layer:
             tree_layer.setItemVisibilityChecked(visibility_action['visible'])
