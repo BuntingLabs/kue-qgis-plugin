@@ -47,6 +47,12 @@ class KueGeoprocessingTask(QgsTask):
                         last_layer_source = QgsProject.instance().mapLayer(SEC_LAST_LAYER_ID)
                         if last_layer_source:
                             action['geoprocessing']['parameters'][key] = last_layer_source.source()
+                    elif value.startswith('§'):
+                        # Allow referring to layers by ID, instead of source
+                        layer_id = value[1:]
+                        layer = QgsProject.instance().mapLayer(layer_id)
+                        if layer:
+                            action['geoprocessing']['parameters'][key] = layer.source()
 
                 output = processing.runAndLoadResults(
                     alg,
