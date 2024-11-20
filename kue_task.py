@@ -3,7 +3,7 @@
 import json
 
 from qgis.core import QgsTask, QgsNetworkAccessManager
-from qgis.PyQt.QtCore import QSettings, pyqtSignal, QUrl, QEventLoop
+from qgis.PyQt.QtCore import QSettings, pyqtSignal, QUrl, QEventLoop, QTimer
 from qgis.PyQt.QtNetwork import QNetworkRequest, QNetworkReply
 from qgis.PyQt.QtCore import QByteArray
 from qgis.core import QgsMessageLog, Qgis
@@ -47,7 +47,18 @@ class KueTask(QgsTask):
 
             loop = QEventLoop()
             reply.finished.connect(loop.quit)
+
+            # Create a QTimer to periodically check if the task is cancelled
+            timer = QTimer()
+            timer.timeout.connect(lambda: self.isCanceled() and loop.quit())
+            timer.start(100)  # Check every 100 milliseconds
+
             loop.exec_()
+
+            # If cancelled prematurely
+            if self.isCanceled():
+                self.errorReceived.emit('Request cancelled.')
+                return False
 
             if reply.error() == QNetworkReply.NoError:
                 content = reply.readAll().data().decode('utf-8')
