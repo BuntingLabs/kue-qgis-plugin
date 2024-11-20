@@ -195,7 +195,7 @@ class KueSidebar(QDockWidget):
                 if file_type == 'vector':
                     if geom_type == 'Point':
                         item.setIcon(QgsIconUtils.iconPoint())
-                    elif geom_type == 'LineString':
+                    elif geom_type == 'Line String':
                         item.setIcon(QgsIconUtils.iconLine())
                     else:
                         item.setIcon(QgsIconUtils.iconPolygon())
