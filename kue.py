@@ -22,7 +22,7 @@ from qgis.core import (
     QgsTextBufferSettings, QgsTextFormat, QgsRectangle,
     QgsSingleSymbolRenderer, QgsSymbol, QgsCategorizedSymbolRenderer,
     QgsRendererCategory, QgsRasterLayer, QgsGraduatedSymbolRenderer,
-    QgsRendererRange, QgsDataSourceUri
+    QgsRendererRange, QgsDataSourceUri, QgsExpression, QgsFeatureRequest
 )
 from qgis import processing
 from qgis.core import QgsFillSymbol
@@ -227,6 +227,8 @@ class KuePlugin:
                 self.suggestPyQGISCode(action['suggest_pyqgis_code'])
             if action.get('set_vector_layer_subset_string'):
                 self.setVectorLayerSubsetString(action['set_vector_layer_subset_string'])
+            if action.get('select_features'):
+                self.selectFeatures(action['select_features'])
             if action.get('chat'):
                 self.text_dock_widget.addMessage({"role": "assistant", "msg": action['chat']['message']})
             if action.get('display_datasets'):
@@ -316,6 +318,24 @@ class KuePlugin:
             else:
                 self.text_dock_widget.addMessage({"role": "assistant", "msg": f"{subset_action['layer_name']}: {subset_action['subset_string']}", "has_button": False})
             layer.triggerRepaint()
+
+    def selectFeatures(self, select_action):
+        layer = QgsProject.instance().mapLayer(select_action['layer_id'])
+        if layer and isinstance(layer, QgsVectorLayer):
+            expression = QgsExpression(select_action['sql_expression'])
+            if expression.hasParserError():
+                self.text_dock_widget.addMessage({"role": "error", "msg": f"Kue created invalid SQL query: {expression.parserErrorString()}", "has_button": False})
+                return
+
+            request = QgsFeatureRequest(expression)
+            matching_features = list(layer.getFeatures(request))
+            layer.selectByIds([feature.id() for feature in matching_features])
+            total_count = layer.featureCount()
+            layer_name = layer.name()
+
+            self.text_dock_widget.addMessage({"role": "assistant", "msg": f"{layer_name}: `{select_action['sql_expression']}` ({len(matching_features)}/{total_count})", "has_button": False})
+        else:
+            self.text_dock_widget.addMessage({"role": "error", "msg": f"Kue could not find that vector layer.", "has_button": False})
 
     def setVectorSingleSymbology(self, symbology_action):
         if 'layer_id' in symbology_action:
