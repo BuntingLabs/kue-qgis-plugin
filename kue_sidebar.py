@@ -2,7 +2,7 @@
 
 from PyQt5.QtWidgets import (
     QDockWidget, QStackedWidget, QWidget, QLineEdit, QPushButton, QHBoxLayout,
-    QVBoxLayout, QScrollArea, QListWidget, QFrame, QListWidgetItem, QLabel
+    QVBoxLayout, QScrollArea, QListWidget, QFrame, QListWidgetItem, QLabel, QTextEdit
 )
 from PyQt5.QtCore import Qt, QSettings
 from qgis.core import QgsVectorLayer, QgsRasterLayer, QgsProject
@@ -86,24 +86,14 @@ class KueSidebar(QDockWidget):
         # Build kue widget
         self.kue_widget = QWidget()
 
-        self.chat_display = QListWidget()
-        self.chat_display.setWordWrap(True)
+        self.chat_display = QTextEdit()
+        self.chat_display.setReadOnly(True)
         self.chat_display.setFrameShape(QFrame.NoFrame)
         self.chat_display.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.chat_display.setTextElideMode(Qt.ElideNone)
-
-        self.chat_delegate = KueChatDelegate()
-        self.chat_delegate.button_clicked = self.onChatButtonClicked
-        self.chat_display.setItemDelegate(self.chat_delegate)
-
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setFrameShape(QFrame.NoFrame)
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setWidget(self.chat_display)
 
         self.kue_layout = QVBoxLayout()
         self.kue_layout.setContentsMargins(0, 0, 0, 0)
-        self.kue_layout.addWidget(self.scroll_area)
+        self.kue_layout.addWidget(self.chat_display)
         self.kue_widget.setLayout(self.kue_layout)
 
         self.find_widget = QWidget()
@@ -144,10 +134,43 @@ class KueSidebar(QDockWidget):
         self.setWidget(self.parent_widget)
 
     def addMessage(self, msg):
-        item = QListWidgetItem()
-        # Store full message data in UserRole
-        item.setData(Qt.UserRole, msg)
-        self.chat_display.addItem(item)
+        # Format message based on role
+        if msg['role'] == 'user':
+            html = f'<div style="text-align: right; margin: 8px;">{msg["msg"]}</div>'
+        elif msg['role'] == 'error':
+            html = f'<div style="text-align: left; margin: 8px; color: red;">{msg["msg"]}</div>'
+        elif msg['role'] == 'geoprocessing':
+            html = f'''
+                <div style="margin: 8px;">
+                    <img src=":/images/themes/default/processingAlgorithm.svg" width="16" height="16" style="vertical-align: middle"/>
+                    <span>{msg["msg"]}</span>
+                </div>
+            '''
+        else:
+            html = f'<div style="text-align: left; margin: 8px;">{msg["msg"]}</div>'
+
+        # Add run code button if needed
+        if msg.get('has_button'):
+            html += f'''
+                <div style="text-align: right;">
+                    <button onclick="runCode('{msg["msg"]}')" 
+                            style="background: #eee; border: 1px solid #ccc; padding: 4px 8px;">
+                        Run Code
+                    </button>
+                </div>
+            '''
+
+        # Append and scroll to bottom
+        cursor = self.chat_display.textCursor()
+        cursor.movePosition(cursor.End)
+        self.chat_display.setTextCursor(cursor)
+
+        self.chat_display.append("")
+        self.chat_display.setAlignment(Qt.AlignRight if msg['role'] == 'user' else Qt.AlignLeft)
+        self.chat_display.insertHtml(html)
+        self.chat_display.verticalScrollBar().setValue(
+            self.chat_display.verticalScrollBar().maximum()
+        )
 
     def onChatButtonClicked(self, msg):
         # Handle button click
@@ -163,9 +186,13 @@ class KueSidebar(QDockWidget):
     def onEnterClicked(self):
         if self.textbox.text().startswith("/find"):
             return
-
         text = self.textbox.text()
-        history = [self.chat_display.item(i).text() for i in range(self.chat_display.count())]
+        # Extract just the message text from the HTML divs/spans
+        history = []
+        for line in self.chat_display.toPlainText().split('\n'):
+            line = line.strip()
+            if line and not line.startswith('<') and not line.endswith('>'):
+                history.append(line)
         self.messageSent(text, history)
         self.textbox.clear()
 
@@ -296,82 +323,3 @@ class KueFileResult(QAbstractItemDelegate):
 
     def sizeHint(self, option, index):
         return QSize(option.rect.width(), 40)
-
-from PyQt5.QtWidgets import QStyledItemDelegate, QStyle
-from PyQt5.QtCore import QSize, QRect
-from PyQt5.QtGui import QColor
-class KueChatDelegate(QStyledItemDelegate):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.button_clicked = None  # Callback for button clicks
-
-    def paint(self, painter, option, index):
-        # Draw selection background if selected
-        if option.state & QStyle.State_Selected:
-            painter.fillRect(option.rect, option.palette.highlight())
-
-        msg = index.data(Qt.UserRole)
-        if not msg:
-            return
-
-        # Icons specific to what's happening
-        hasIcon = False
-        if msg['role'] == 'geoprocessing':
-            hasIcon = True
-            icon = QIcon(':/images/themes/default/processingAlgorithm.svg')
-
-            icon_rect = option.rect.adjusted(4, 4, -option.rect.width() + 24, -4)
-            icon.paint(painter, icon_rect)
-
-        # Error if not selected
-        text_color = (QColor(255, 0, 0) if (msg['role'] == 'error' and not (option.state & QStyle.State_Selected))
-                     else option.palette.highlightedText().color() if option.state & QStyle.State_Selected
-                     else option.palette.text().color())
-        painter.setPen(text_color)
-
-        if hasIcon:
-            text_rect = option.rect.adjusted(28, 4, -8, -4)
-        else:
-            text_rect = option.rect.adjusted(8, 4, -8, -4)
-        if msg.get('has_button'):
-            text_rect.setRight(text_rect.right() - 70)  # Make room for button
-
-            # Draw button - align to top right
-            button_rect = QRect(text_rect.right() + 4, text_rect.top(), 60, 24)
-            painter.drawRect(button_rect)
-            painter.drawText(button_rect, Qt.AlignCenter, "Run Code")
-
-        # Use drawText with TextWordWrap flag for multiline support
-        alignment = Qt.AlignRight if msg['role'] == 'user' else Qt.AlignLeft
-        painter.drawText(
-            text_rect,
-            alignment | Qt.AlignVCenter | Qt.TextWordWrap,
-            msg['msg']
-        )
-
-    def editorEvent(self, event, model, option, index):
-        if event.type() == event.MouseButtonPress:
-            msg = index.data(Qt.UserRole)
-            if msg.get('has_button'):
-                button_rect = QRect(option.rect.right() - 54, option.rect.top() + 4, 50, 24)
-                if button_rect.contains(event.pos()):
-                    if self.button_clicked:
-                        self.button_clicked(msg)
-                    return True
-        return False
-
-    def sizeHint(self, option, index):
-        msg = index.data(Qt.UserRole)
-        if not msg:
-            return QSize(option.rect.width(), 32)
-
-        # Calculate height needed for wrapped text
-        text_rect = option.rect.adjusted(8, 4, -8, -4)
-        if msg.get('has_button'):
-            text_rect.setRight(text_rect.right() - 60)  # Account for button width
-
-        metrics = option.fontMetrics
-        text_height = metrics.boundingRect(text_rect, Qt.TextWordWrap, msg['msg']).height()
-
-        # Return max of text height or minimum height
-        return QSize(option.rect.width(), max(text_height + 8, 32))
