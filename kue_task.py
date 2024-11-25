@@ -14,7 +14,7 @@ class KueTask(QgsTask):
     responseReceived = pyqtSignal(dict)
     errorReceived = pyqtSignal(str)
 
-    def __init__(self, user_request, kue_context, history_str):
+    def __init__(self, user_request, kue_context, history_str, kue_version):
         super().__init__(
             'Waiting for Kue to respond',
             QgsTask.CanCancel
@@ -22,6 +22,8 @@ class KueTask(QgsTask):
         self.user_request = user_request
         self.kue_context = kue_context
         self.history_str = history_str
+        self.kue_version = kue_version
+
     def run(self):
         try:
             url = QUrl("https://qgis-api.buntinglabs.com/kue/v1")
@@ -29,6 +31,7 @@ class KueTask(QgsTask):
             request = QNetworkRequest(url)
             request.setHeader(QNetworkRequest.ContentTypeHeader, "multipart/form-data; boundary=boundary")
             request.setRawHeader(b"x-kue-token", QSettings().value("buntinglabs-kue/auth_token", "NO_AUTH_TOKEN").encode('utf-8'))
+            request.setRawHeader(b"x-kue-version", self.kue_version.encode('utf-8'))
 
             post_data = QByteArray()
             post_data.append(b"--boundary\r\n")

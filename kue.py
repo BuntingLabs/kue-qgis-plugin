@@ -507,7 +507,7 @@ class KuePlugin:
     def onEnterClicked(self, text: str, history: list[str]):
         history_str = '\n'.join(history)[-2048:]
 
-        kue_task = KueTask(text, self.createKueContext(), history_str)
+        kue_task = KueTask(text, self.createKueContext(), history_str, self.plugin_version)
         kue_task.responseReceived.connect(self.handleKueResponse)
         kue_task.errorReceived.connect(self.handleKueError)
         QgsApplication.taskManager().addTask(kue_task)
