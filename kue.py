@@ -129,26 +129,24 @@ class KuePlugin:
         layers = QgsProject.instance().mapLayers().values()
         vector_layers = [layer for layer in layers if isinstance(layer, QgsVectorLayer)]
         raster_layers = [layer for layer in layers if isinstance(layer, QgsRasterLayer)]
+        # Transform centroid to EPSG:4326 if needed
+        centroid = self.iface.mapCanvas().extent().center()
 
-        # Transform bounding box to EPSG:4326 if needed
-        qgis_bbox = self.iface.mapCanvas().extent()
         if project_crs != QgsCoordinateReferenceSystem("EPSG:4326"):
             try:
                 transform = QgsCoordinateTransform(project_crs, QgsCoordinateReferenceSystem("EPSG:4326"), QgsProject.instance())
-                qgis_bbox = transform.transformBoundingBox(qgis_bbox)
+                centroid = transform.transform(centroid)
             except Exception as e:
-                print(f"Failed to transform bounding box to EPSG:4326: {e}")
+                print(f"Failed to transform centroid to EPSG:4326: {e}")
                 pass
 
         return {
             "projection": project_crs.authid(),
             "locale": QSettings().value('locale/userLocale'),
-            "bbox": [
-                qgis_bbox.xMinimum(),
-                qgis_bbox.yMinimum(),
-                qgis_bbox.xMaximum(),
-                qgis_bbox.yMaximum()
-            ],
+            "centroid": {
+                "lat": centroid.y(),
+                "lon": centroid.x()
+            },
             "vector_layers": [
                 {
                     "id": layer.id(),
