@@ -5,6 +5,7 @@ import random
 import secrets
 import string
 from itertools import islice
+import tempfile
 
 from PyQt5.QtWidgets import (
     QVBoxLayout, QLabel, QLineEdit, QPushButton, QAction, 
@@ -235,6 +236,8 @@ class KuePlugin:
                 self.displayDatasets(action['display_datasets'])
             if action.get('set_projection'):
                 self.setProjection(action['set_projection'])
+            if action.get('apply_qml_style'):
+                self.applyQMLStyle(action['apply_qml_style'])
 
         # Execute geoprocessing actions as a task if there are any
         if geoprocessing_actions:
@@ -242,6 +245,19 @@ class KuePlugin:
             task.errorReceived.connect(self.handleKueError)
             QgsApplication.taskManager().addTask(task)
             self.task_trash.append(task)  # Prevent garbage collection
+
+    def applyQMLStyle(self, style_json):
+        vl = QgsProject.instance().mapLayer(style_json['layer_id'])
+        if vl:
+            with tempfile.NamedTemporaryFile(suffix=".qml") as temp_file:
+                qml_style = style_json['style']
+                qml_style = qml_style.replace('§LAYER_GEOMETRY_TYPE', str(int(vl.geometryType())))
+
+                temp_file.write(qml_style.encode('utf-8'))
+                temp_file.flush()
+                result_flag = False
+                vl.loadNamedStyle(temp_file.name, result_flag)
+                vl.triggerRepaint()
 
     def displayDatasets(self, action):
         message = action['message']
