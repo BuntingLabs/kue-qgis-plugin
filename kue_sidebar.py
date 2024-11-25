@@ -1,20 +1,36 @@
 # Copyright Bunting Labs, Inc. 2024
 
 from PyQt5.QtWidgets import (
-    QDockWidget, QStackedWidget, QWidget, QLineEdit, QPushButton, QHBoxLayout,
-    QVBoxLayout, QScrollArea, QListWidget, QFrame, QListWidgetItem, QLabel, QTextEdit
+    QDockWidget,
+    QStackedWidget,
+    QWidget,
+    QLineEdit,
+    QPushButton,
+    QHBoxLayout,
+    QVBoxLayout,
+    QListWidget,
+    QFrame,
+    QListWidgetItem,
+    QLabel,
+    QTextEdit,
 )
 from PyQt5.QtCore import Qt, QSettings
 from qgis.core import QgsVectorLayer, QgsRasterLayer, QgsProject
-from PyQt5.QtGui import QIcon, QColor
 from qgis.core import QgsIconUtils
 
 from typing import Callable
 import os
 from .kue_find import KueFind, VECTOR_EXTENSIONS, RASTER_EXTENSIONS
 
+
 class KueSidebar(QDockWidget):
-    def __init__(self, iface, messageSent: Callable, authenticateUser: Callable, kue_find: KueFind):
+    def __init__(
+        self,
+        iface,
+        messageSent: Callable,
+        authenticateUser: Callable,
+        kue_find: KueFind,
+    ):
         super().__init__("Kue", iface.mainWindow())
 
         # Properties
@@ -33,19 +49,25 @@ class KueSidebar(QDockWidget):
         title = QLabel("<h2>Kue</h2>")
         title.setContentsMargins(0, 0, 0, 10)
 
-        description = QLabel("Kue is an embedded AI assistant inside QGIS. It can read and edit your project, using cloud AI services to do so (LLMs).")
+        description = QLabel(
+            "Kue is an embedded AI assistant inside QGIS. It can read and edit your project, using cloud AI services to do so (LLMs)."
+        )
         description.setWordWrap(True)
         description.setContentsMargins(0, 0, 0, 10)
         description.setMinimumWidth(300)
 
-        pricing = QLabel("Using Kue requires a subscription of $19/month (first month free). This allows us to build useful AI tools.")
+        pricing = QLabel(
+            "Using Kue requires a subscription of $19/month (first month free). This allows us to build useful AI tools."
+        )
         pricing.setWordWrap(True)
         pricing.setContentsMargins(0, 0, 0, 10)
         pricing.setMinimumWidth(300)
 
         login_button = QPushButton("Log In")
         login_button.setFixedWidth(280)
-        login_button.setStyleSheet("QPushButton { background-color: #0d6efd; color: white; border: none; padding: 8px; border-radius: 4px; } QPushButton:hover { background-color: #0b5ed7; }")
+        login_button.setStyleSheet(
+            "QPushButton { background-color: #0d6efd; color: white; border: none; padding: 8px; border-radius: 4px; } QPushButton:hover { background-color: #0b5ed7; }"
+        )
         login_button.clicked.connect(self.authenticateUser)
 
         auth_layout.addWidget(title)
@@ -63,11 +85,12 @@ class KueSidebar(QDockWidget):
 
         def handleKeyPress(e):
             if e.key() == Qt.Key_Up:
-                user_messages = [msg for msg in [] if msg['role'] == 'user']
+                user_messages = [msg for msg in [] if msg["role"] == "user"]
                 if user_messages:
-                    self.textbox.setText(user_messages[-1]['msg'])
+                    self.textbox.setText(user_messages[-1]["msg"])
             else:
                 QLineEdit.keyPressEvent(self.textbox, e)
+
         self.textbox.keyPressEvent = handleKeyPress
 
         self.enter_button = QPushButton("Enter")
@@ -129,36 +152,38 @@ class KueSidebar(QDockWidget):
         self.parent_widget.addWidget(self.kue_widget)
         self.parent_widget.addWidget(self.auth_widget)
 
-        self.parent_widget.setCurrentIndex(0 if QSettings().value("buntinglabs-kue/auth_token") else 1)
+        self.parent_widget.setCurrentIndex(
+            0 if QSettings().value("buntinglabs-kue/auth_token") else 1
+        )
 
         self.setWidget(self.parent_widget)
 
     def addMessage(self, msg):
         # Format message based on role
-        if msg['role'] == 'user':
+        if msg["role"] == "user":
             html = f'<div style="text-align: right; margin: 8px;">{msg["msg"]}</div>'
-        elif msg['role'] == 'error':
+        elif msg["role"] == "error":
             html = f'<div style="text-align: left; margin: 8px; color: red;">{msg["msg"]}</div>'
-        elif msg['role'] == 'geoprocessing':
-            html = f'''
+        elif msg["role"] == "geoprocessing":
+            html = f"""
                 <div style="margin: 8px;">
                     <img src=":/images/themes/default/processingAlgorithm.svg" width="16" height="16" style="vertical-align: middle"/>
                     <span>{msg["msg"]}</span>
                 </div>
-            '''
+            """
         else:
             html = f'<div style="text-align: left; margin: 8px;">{msg["msg"]}</div>'
 
         # Add run code button if needed
-        if msg.get('has_button'):
-            html += f'''
+        if msg.get("has_button"):
+            html += f"""
                 <div style="text-align: right;">
                     <button onclick="runCode('{msg["msg"]}')" 
                             style="background: #eee; border: 1px solid #ccc; padding: 4px 8px;">
                         Run Code
                     </button>
                 </div>
-            '''
+            """
 
         # Append and scroll to bottom
         cursor = self.chat_display.textCursor()
@@ -166,7 +191,9 @@ class KueSidebar(QDockWidget):
         self.chat_display.setTextCursor(cursor)
 
         self.chat_display.append("")
-        self.chat_display.setAlignment(Qt.AlignRight if msg['role'] == 'user' else Qt.AlignLeft)
+        self.chat_display.setAlignment(
+            Qt.AlignRight if msg["role"] == "user" else Qt.AlignLeft
+        )
         self.chat_display.insertHtml(html)
         self.chat_display.verticalScrollBar().setValue(
             self.chat_display.verticalScrollBar().maximum()
@@ -180,7 +207,7 @@ class KueSidebar(QDockWidget):
         self.iface.actionShowPythonDialog().trigger()
         console._console.console.toggleEditor(True)
 
-        QApplication.clipboard().setText(msg['msg'])
+        QApplication.clipboard().setText(msg["msg"])
         console._console.console.pasteEditor()
 
     def onEnterClicked(self):
@@ -189,9 +216,9 @@ class KueSidebar(QDockWidget):
         text = self.textbox.text()
         # Extract just the message text from the HTML divs/spans
         history = []
-        for line in self.chat_display.toPlainText().split('\n'):
+        for line in self.chat_display.toPlainText().split("\n"):
             line = line.strip()
-            if line and not line.startswith('<') and not line.endswith('>'):
+            if line and not line.startswith("<") and not line.endswith(">"):
                 history.append(line)
         self.messageSent(text, history)
         self.textbox.clear()
@@ -199,8 +226,9 @@ class KueSidebar(QDockWidget):
     def openRasterFile(self, path: str):
         rlayer = QgsRasterLayer(path, os.path.basename(path))
         QgsProject.instance().addMapLayer(rlayer)
+
     def openVectorFile(self, path: str):
-        vlayer = QgsVectorLayer(path, os.path.basename(path), 'ogr')
+        vlayer = QgsVectorLayer(path, os.path.basename(path), "ogr")
         QgsProject.instance().addMapLayer(vlayer)
 
     def onTextUpdate(self, text):
@@ -212,21 +240,24 @@ class KueSidebar(QDockWidget):
 
             # Search
             results = self.kue_find.search(query)
-            for (path, atime, file_type, geom_type, location) in results:
+            for path, atime, file_type, geom_type, location in results:
                 item = QListWidgetItem()
-                item.setData(Qt.UserRole, {
-                    "path": path.replace(os.path.expanduser("~"), "~"),
-                    "atime": atime,
-                    "location": location
-                })
-                if file_type == 'vector':
-                    if geom_type == 'Point':
+                item.setData(
+                    Qt.UserRole,
+                    {
+                        "path": path.replace(os.path.expanduser("~"), "~"),
+                        "atime": atime,
+                        "location": location,
+                    },
+                )
+                if file_type == "vector":
+                    if geom_type == "Point":
                         item.setIcon(QgsIconUtils.iconPoint())
-                    elif geom_type == 'Line String':
+                    elif geom_type == "Line String":
                         item.setIcon(QgsIconUtils.iconLine())
                     else:
                         item.setIcon(QgsIconUtils.iconPolygon())
-                elif file_type == 'raster':
+                elif file_type == "raster":
                     item.setIcon(QgsIconUtils.iconRaster())
                 else:
                     item.setIcon(QgsIconUtils.iconDefaultLayer())
@@ -234,9 +265,11 @@ class KueSidebar(QDockWidget):
         else:
             self.above_mb_widget.setCurrentIndex(0)
 
+
 from PyQt5.QtWidgets import QAbstractItemDelegate
 from PyQt5.QtCore import QSize
 from PyQt5.QtWidgets import QStyle
+
 
 class KueFileResult(QAbstractItemDelegate):
     def __init__(self, open_vector=None, open_raster=None):
@@ -268,7 +301,7 @@ class KueFileResult(QAbstractItemDelegate):
             option.rect.left(),
             option.rect.bottom(),
             option.rect.right(),
-            option.rect.bottom()
+            option.rect.bottom(),
         )
 
         # Text color depends on select state
@@ -282,7 +315,7 @@ class KueFileResult(QAbstractItemDelegate):
         if icon:
             icon_rect = option.rect.adjusted(4, 4, -option.rect.width() + 24, -4)
             icon.paint(painter, icon_rect)
-            
+
         path = index.data(Qt.UserRole)["path"]
         filename = os.path.basename(path)
         dirname = os.path.dirname(path)
@@ -294,20 +327,18 @@ class KueFileResult(QAbstractItemDelegate):
         font = painter.font()
         font.setBold(False)
         painter.setFont(font)
-        text_rect = option.rect.adjusted(28, 4, -4, -int(option.rect.height()/2))
+        text_rect = option.rect.adjusted(28, 4, -4, -int(option.rect.height() / 2))
         painter.drawText(
-            text_rect,
-            Qt.AlignLeft | Qt.AlignVCenter,
-            f"{dirname} (opened {atime})"
+            text_rect, Qt.AlignLeft | Qt.AlignVCenter, f"{dirname} (opened {atime})"
         )
 
         # Draw dirname on second line
         font.setBold(True)
         painter.setFont(font)
         painter.drawText(
-            option.rect.adjusted(28, int(option.rect.height()/2), -4, -4),
+            option.rect.adjusted(28, int(option.rect.height() / 2), -4, -4),
             Qt.AlignLeft | Qt.AlignVCenter,
-            filename
+            filename,
         )
         # Location is lighter gray
         if option.state & QStyle.State_Selected:
@@ -316,9 +347,9 @@ class KueFileResult(QAbstractItemDelegate):
             painter.setPen(option.palette.text().color().lighter())
 
         painter.drawText(
-            option.rect.adjusted(28, int(option.rect.height()/2), -4, -4),
+            option.rect.adjusted(28, int(option.rect.height() / 2), -4, -4),
             Qt.AlignRight | Qt.AlignVCenter,
-            location
+            location,
         )
 
     def sizeHint(self, option, index):
