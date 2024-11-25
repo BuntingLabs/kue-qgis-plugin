@@ -1,8 +1,8 @@
 [general]
 name=Kue
 description=Kue is an embedded AI assistant inside QGIS.
-about=Kue can edit vector symbology, search for datasets, add basemaps, add labels, help with tasks in QGIS, run geoprocessing algorithms, and more. This plugin requires a paid subscription.
-version=1.5
+about=Kue can edit vector symbology, run geoprocessing algorithms, add basemaps, add labels, and help with tasks in QGIS. This plugin requires a paid subscription.
+version=1.6
 qgisMinimumVersion=3.0
 author=Brendan Ashworth
 email=brendan@buntinglabs.com
