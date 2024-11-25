@@ -127,7 +127,6 @@ class KuePlugin:
             QUrl(f"https://buntinglabs.com/account/register?kue_token={key}")
         )
         QSettings().setValue("buntinglabs-kue/auth_token", key)
-        self.toggleKue()
 
     # ================================================
     # AI Management (inputs and outputs)

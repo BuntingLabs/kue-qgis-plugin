@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QTextEdit,
 )
-from PyQt5.QtCore import Qt, QSettings
+from PyQt5.QtCore import Qt, QSettings, QTimer
 from qgis.core import QgsVectorLayer, QgsRasterLayer, QgsProject
 from qgis.core import QgsIconUtils
 
@@ -157,6 +157,18 @@ class KueSidebar(QDockWidget):
         )
 
         self.setWidget(self.parent_widget)
+
+        # Set up a timer to poll the QSettings value
+        self.poll_timer = QTimer(self)
+        self.poll_timer.timeout.connect(self.checkAuthToken)
+        self.poll_timer.start(5000)  # 5 seconds
+
+    def checkAuthToken(self):
+        # Check if the auth token is set and update the widget index accordingly
+        if QSettings().value("buntinglabs-kue/auth_token"):
+            self.parent_widget.setCurrentIndex(0)
+        else:
+            self.parent_widget.setCurrentIndex(1)
 
     def addMessage(self, msg):
         # Format message based on role
