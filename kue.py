@@ -164,12 +164,14 @@ class KuePlugin:
         return {
             "projection": project_crs.authid(),
             "locale": QSettings().value("locale/userLocale"),
-            "centroid": {"lat": centroid.y(), "lon": centroid.x()},
+            "centroid": {
+                "lat": format(centroid.y(), ".6f"),
+                "lon": format(centroid.x(), ".6f"),
+            },
             "vector_layers": [
                 {
                     "id": layer.id(),
                     "layer_name": layer.name(),
-                    "source": layer.source(),
                     "visible": is_layer_visible(layer),
                     "layer_type": QgsWkbTypes.displayString(layer.wkbType()),
                     "symbology": self.getLayerSymbology(layer),
