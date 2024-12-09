@@ -9,7 +9,7 @@ import tempfile
 
 from PyQt5.QtWidgets import QAction
 from PyQt5.QtGui import QIcon, QColor, QDesktopServices
-from PyQt5.QtCore import QSettings, Qt, QUrl
+from PyQt5.QtCore import QSettings, Qt, QUrl, QVariant, QDate
 
 from qgis.core import (
     QgsApplication,
@@ -132,6 +132,15 @@ class KuePlugin:
     # AI Management (inputs and outputs)
     # ================================================
 
+    def formatAttributePreview(self, attr):
+        if isinstance(attr, QDate):
+            return attr.toString("yyyy-MM-dd")  # ISO 8601
+        elif isinstance(attr, float):
+            return float(f"{attr:.6g}")  # 6 significant digits
+        elif isinstance(attr, int):
+            return attr
+        return str(attr)[:28] + "..." if len(str(attr)) > 28 else str(attr)
+
     def createKueContext(self):
         project_crs = QgsProject.instance().crs()
         layers = QgsProject.instance().mapLayers().values()
@@ -168,7 +177,9 @@ class KuePlugin:
                     # For now, give only 1 feature (if present) with islice
                     "attribute_example": [
                         {
-                            str(field.name()): str(feature[field.name()])
+                            str(field.name()): self.formatAttributePreview(
+                                feature[field.name()]
+                            )
                             for field in layer.fields()
                             if field.name() in feature.fields().names()
                         }
