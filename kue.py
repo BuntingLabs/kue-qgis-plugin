@@ -371,7 +371,7 @@ class KuePlugin:
                 self.text_dock_widget.addMessage(
                     {
                         "role": "assistant",
-                        "msg": f"{subset_action['layer_name']}: {subset_action['subset_string']}",
+                        "msg": f"{layer.name()}: {subset_action['subset_string']}",
                         "has_button": False,
                     }
                 )
