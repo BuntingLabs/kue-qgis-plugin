@@ -33,6 +33,7 @@ from qgis.core import (
     QgsDataSourceUri,
     QgsExpression,
     QgsFeatureRequest,
+    NULL as QgsNull,
 )
 from qgis.core import QgsFillSymbol
 
@@ -139,6 +140,8 @@ class KuePlugin:
             return float(f"{attr:.6g}")  # 6 significant digits
         elif isinstance(attr, int):
             return attr
+        elif attr == QgsNull:
+            return None
         return str(attr)[:28] + "..." if len(str(attr)) > 28 else str(attr)
 
     def createKueContext(self):
