@@ -294,7 +294,12 @@ class KuePlugin:
                 temp_file.write(qml_style.encode("utf-8"))
                 temp_file.flush()
                 result_flag = False
-                vl.loadNamedStyle(temp_file.name, result_flag)
+                output = vl.loadNamedStyle(temp_file.name, result_flag)
+                # Cautiously interpret output. not sure if its documented
+                if isinstance(output, tuple) and len(output) == 2:
+                    result_error, was_ok = output
+                    if not was_ok:
+                        self.handleKueError(f"Could not style layer: {result_error}")
                 vl.triggerRepaint()
 
     def displayDatasets(self, action):
