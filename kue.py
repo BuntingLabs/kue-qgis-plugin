@@ -165,8 +165,8 @@ class KuePlugin:
             "projection": project_crs.authid(),
             "locale": QSettings().value("locale/userLocale"),
             "centroid": {
-                "lat": format(centroid.y(), ".6f"),
-                "lon": format(centroid.x(), ".6f"),
+                "lat": float(format(centroid.y(), ".6f")),
+                "lon": float(format(centroid.x(), ".6f")),
             },
             "vector_layers": [
                 {
