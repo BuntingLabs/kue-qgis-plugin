@@ -219,6 +219,17 @@ class KuePlugin:
         for action in data.get("actions", []):
             if action.get("geoprocessing"):
                 geoprocessing_actions.append(action)
+
+                alg = QgsApplication.processingRegistry().algorithmById(
+                    action["geoprocessing"]["id"]
+                )
+                if alg:
+                    self.text_dock_widget.addMessage(
+                        {
+                            "role": "geoprocessing",
+                            "msg": f"Running {alg.displayName()}...",
+                        }
+                    )
                 continue
 
             # Handle all non-geoprocessing actions immediately

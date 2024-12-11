@@ -32,9 +32,6 @@ class KueGeoprocessingTask(QgsTask):
                         f"Geoprocessing algorithm not found: {action['geoprocessing']['id']}"
                     )
                     continue
-                self.plugin.text_dock_widget.addMessage(
-                    {"role": "geoprocessing", "msg": f"Running {alg.displayName()}..."}
-                )
 
                 # Handle invalid geometries
                 previous_invalid_setting = ProcessingConfig.getSetting(
