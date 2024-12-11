@@ -187,6 +187,7 @@ class KuePlugin:
                         }
                         for feature in islice(layer.getFeatures(), 1)
                     ],
+                    "subset_string": layer.subsetString() or None,
                 }
                 for layer in vector_layers
             ],
