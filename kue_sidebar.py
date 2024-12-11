@@ -20,6 +20,7 @@ from qgis.core import QgsIconUtils
 
 from typing import Callable
 import os
+import re
 from .kue_find import KueFind, VECTOR_EXTENSIONS, RASTER_EXTENSIONS
 
 
@@ -171,6 +172,11 @@ class KueSidebar(QDockWidget):
             self.parent_widget.setCurrentIndex(1)
 
     def addMessage(self, msg):
+        # Super simple markdown formatting
+        msg["msg"] = msg["msg"].replace("\n", "<br>")
+        msg["msg"] = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", msg["msg"])
+        msg["msg"] = re.sub(r"\*(.*?)\*", r"<i>\1</i>", msg["msg"])
+
         # Format message based on role
         if msg["role"] == "user":
             html = f'<div style="text-align: right; margin: 8px;">{msg["msg"]}</div>'
