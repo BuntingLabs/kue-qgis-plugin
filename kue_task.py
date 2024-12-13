@@ -102,6 +102,12 @@ class KueTask(QgsTask):
                     "Sorry: unexpected bug on Kue's server, our team will investigate."
                 )
                 return False
+            # Bad Gateway
+            elif reply.attribute(QNetworkRequest.HttpStatusCodeAttribute) == 502:
+                self.errorReceived.emit(
+                    "Kue server seems to be down, sorry, please try again later."
+                )
+                return False
             else:
                 QgsMessageLog.logMessage(
                     f"Kue error code: {reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)}",
