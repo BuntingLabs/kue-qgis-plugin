@@ -39,7 +39,7 @@ from qgis.core import QgsFillSymbol
 
 from .kue_task import KueTask
 from .kue_geoprocessing import KueGeoprocessingTask
-from .kue_messages import KUE_INTRODUCTION_MESSAGES
+from .kue_messages import KUE_INTRODUCTION_MESSAGES, KUE_ASK_KUE
 from .kue_sidebar import KueSidebar
 from .kue_find import KueFind
 
@@ -76,6 +76,7 @@ class KuePlugin:
         self.starter_messages = KUE_INTRODUCTION_MESSAGES.get(
             lang, KUE_INTRODUCTION_MESSAGES["en"]
         )
+        self.ask_kue_message = KUE_ASK_KUE.get(lang, KUE_ASK_KUE["en"])
 
         self.task_trash = []
 
@@ -89,7 +90,11 @@ class KuePlugin:
         self.iface.addToolBarIcon(self.kue_action)
 
         self.text_dock_widget = KueSidebar(
-            self.iface, self.onEnterClicked, self.authenticateUser, self.kue_find
+            self.iface,
+            self.onEnterClicked,
+            self.authenticateUser,
+            self.kue_find,
+            self.ask_kue_message,
         )
 
         for msg in self.starter_messages:

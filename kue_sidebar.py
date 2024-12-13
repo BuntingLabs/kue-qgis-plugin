@@ -31,6 +31,7 @@ class KueSidebar(QDockWidget):
         messageSent: Callable,
         authenticateUser: Callable,
         kue_find: KueFind,
+        ask_kue_message: str,
     ):
         super().__init__("Kue", iface.mainWindow())
 
@@ -81,6 +82,7 @@ class KueSidebar(QDockWidget):
         self.message_bar_widget = QWidget()
 
         self.textbox = QLineEdit()
+        self.textbox.setPlaceholderText(ask_kue_message)
         self.textbox.returnPressed.connect(self.onEnterClicked)
         self.textbox.textChanged.connect(self.onTextUpdate)
 

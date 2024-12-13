@@ -33,4 +33,30 @@ KUE_INTRODUCTION_MESSAGES = {
         "আমি কু, একটি AI সহকারী যা QGIS প্রকল্পগুলি পড়তে এবং সম্পাদনা করতে পারে।",
         "আজ আমি আপনাকে কীভাবে সাহায্য করতে পারি?",
     ],
+    "he": [
+        "אני קיו, עוזר AI שיכול לקרוא ולערוך פרויקטים של QGIS.",
+        "?כיצד אוכל לעזור לך היום",
+    ],
+    "lv": [
+        "Es esmu Kue, AI asistents, kas var lasīt un rediģēt QGIS projektus.",
+        "Kā es varu jums šodien palīdzēt?",
+    ],
+    "pl": [
+        "Jestem Kue, asystentem AI, który może czytać i edytować projekty QGIS.",
+        "Jak mogę ci dziś pomóc?",
+    ],
+}
+
+KUE_ASK_KUE = {
+    "en": "Ask Kue...",
+    "pt": "Perguntar ao Kue...",
+    "fr": "Demander à Kue...",
+    "de": "Kue fragen...",
+    "es": "Pregunta a Kue...",
+    "it": "Chiedi a Kue...",
+    "hi": "क्यू से पूछें...",
+    "bn": "কু-কে জিজ্ঞাসা করুন...",
+    "he": "...שאל את קיו",
+    "lv": "Jautāt Kue...",
+    "pl": "Zapytaj Kue...",
 }
