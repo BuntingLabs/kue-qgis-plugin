@@ -49,20 +49,16 @@ class KueGeoprocessingTask(QgsTask):
 
                 # Replace any parameters with special values
                 for key, value in action["geoprocessing"]["parameters"].items():
-                    if value == "§LAST_LAYER" and SEC_LAST_LAYER_ID:
-                        last_layer_source = QgsProject.instance().mapLayer(
-                            SEC_LAST_LAYER_ID
+                    if isinstance(value, str):
+                        action["geoprocessing"]["parameters"][key] = (
+                            self.transform_parameter(value, SEC_LAST_LAYER_ID)
                         )
-                        if last_layer_source:
-                            action["geoprocessing"]["parameters"][key] = (
-                                last_layer_source.source()
-                            )
-                    elif value.startswith("§"):
-                        # Allow referring to layers by ID, instead of source
-                        layer_id = value[1:]
-                        layer = QgsProject.instance().mapLayer(layer_id)
-                        if layer:
-                            action["geoprocessing"]["parameters"][key] = layer.source()
+                    elif isinstance(value, list):
+                        for i, v in enumerate(value):
+                            if isinstance(v, str):
+                                action["geoprocessing"]["parameters"][key][i] = (
+                                    self.transform_parameter(v, SEC_LAST_LAYER_ID)
+                                )
 
                 output = processing.runAndLoadResults(
                     alg, action["geoprocessing"]["parameters"]
@@ -80,6 +76,19 @@ class KueGeoprocessingTask(QgsTask):
         except Exception as e:
             self.errorReceived.emit(f"Geoprocessing error: {str(e)}")
             return False
+
+    def transform_parameter(self, value: str, SEC_LAST_LAYER_ID: str) -> str:
+        if value == "§LAST_LAYER" and SEC_LAST_LAYER_ID:
+            last_layer_source = QgsProject.instance().mapLayer(SEC_LAST_LAYER_ID)
+            if last_layer_source:
+                return last_layer_source.source()
+        elif value.startswith("§"):
+            # Allow referring to layers by ID, instead of source
+            layer_id = value[1:]
+            layer = QgsProject.instance().mapLayer(layer_id)
+            if layer:
+                return layer.source()
+        return value
 
     def finished(self, result):
         pass
