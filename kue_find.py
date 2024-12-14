@@ -93,17 +93,10 @@ def humanize_atime(atime: int) -> str:
     return f"{minutes} minutes ago"
 
 
-def get_trigrams(text: str) -> set:
-    """Get overlapping trigrams from text."""
-    text = text.lower()
-    return {text[i : i + 3] for i in range(len(text) - 2)} if len(text) > 2 else {text}
-
-
 class IndexingTask(QgsTask):
     def __init__(self, dir_path, description="Indexing files for Kue /find"):
         super().__init__(description, QgsTask.CanCancel)
         self.dir_path = dir_path
-        self.filename_trigrams = {}
         self.files = []
         self.exception = None
         self.processed_files = 0
@@ -187,7 +180,6 @@ class IndexingTask(QgsTask):
                                 "bbox": bbox,
                             }
                         )
-                        self.filename_trigrams[full_path] = get_trigrams(full_path)
                         continue
 
                 if filename.endswith(VECTOR_EXTENSIONS):
@@ -353,7 +345,6 @@ class IndexingTask(QgsTask):
                         "bbox": bbox,
                     }
                 )
-                self.filename_trigrams[full_path] = get_trigrams(full_path)
 
             if USE_SQLITE:
                 conn.commit()
@@ -379,7 +370,6 @@ class KueFind:
         self.bbox_finder = BBoxFinder(
             os.path.join(os.path.dirname(__file__), "regions_and_countries.csv")
         )
-        self.filename_trigrams = {}
         self.index_task = None
         self.index_task_trash = []  # Keep reference to prevent garbage collection
 
@@ -390,7 +380,6 @@ class KueFind:
         def task_completed(exception=None, result=None):
             if exception is None:
                 self.files = self.index_task.files
-                self.filename_trigrams = self.index_task.filename_trigrams
             self.index_task = None
 
         self.index_task.taskCompleted.connect(task_completed)
@@ -401,21 +390,24 @@ class KueFind:
 
     def search(self, query: str, n: int = 12):
         # Start indexing if not already started
-        if not self.filename_trigrams and self.index_task is None:
+        if not self.files and self.index_task is None:
             self.index(os.path.expanduser("~"))
             return []
 
         query_words = query.lower().split()
 
-        def score_filename(file_info):
-            query_trigrams = get_trigrams(" ".join(query_words))
-            file_trigrams = self.filename_trigrams[file_info["path"]]
+        # Filter files that contain all query words
+        matching_files = [
+            f
+            for f in self.files
+            if all(word in f["path"].lower() for word in query_words)
+        ]
 
-            intersection = len(query_trigrams & file_trigrams)
-            union = len(query_trigrams | file_trigrams)
-            return -intersection / union if union > 0 else 0
+        # Sort by last accessed time, most recent first
+        results = sorted(
+            matching_files, key=lambda f: f["last_accessed"], reverse=True
+        )[:n]
 
-        results = sorted(self.files, key=score_filename)[:n]
         return [
             (
                 f["path"],

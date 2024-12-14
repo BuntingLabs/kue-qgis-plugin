@@ -252,10 +252,10 @@ class KueSidebar(QDockWidget):
         QgsProject.instance().addMapLayer(vlayer)
 
     def onTextUpdate(self, text):
-        if text.startswith("/find "):
+        if text.startswith("/find"):
             self.above_mb_widget.setCurrentIndex(1)
 
-            query = text[6:]
+            query = text[5:].strip()
             self.find_results.clear()
 
             # Search
