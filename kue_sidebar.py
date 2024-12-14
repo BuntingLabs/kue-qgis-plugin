@@ -126,11 +126,14 @@ class KueSidebar(QDockWidget):
         self.find_layout = QVBoxLayout()
         self.find_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.find_results = QListWidget()
+        self.find_results = FileListWidget()
         self.find_results.setWordWrap(True)
         self.find_results.setFrameShape(QFrame.NoFrame)
         self.find_results.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.find_results.setTextElideMode(Qt.ElideNone)
+        self.find_results.setDragEnabled(True)
+        self.find_results.setDragDropMode(QListWidget.DragOnly)
+
         # Handle opening a file
         delegate = KueFileResult()
         delegate.open_raster = self.openRasterFile
@@ -289,6 +292,23 @@ class KueSidebar(QDockWidget):
 from PyQt5.QtWidgets import QAbstractItemDelegate
 from PyQt5.QtCore import QSize
 from PyQt5.QtWidgets import QStyle
+from PyQt5.QtCore import QMimeData, QUrl
+
+
+class FileListWidget(QListWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def mimeTypes(self):
+        return ["text/uri-list"]
+
+    def mimeData(self, items):
+        data = QMimeData()
+        urls = []
+        path = items[0].data(Qt.UserRole)["path"].replace("~", os.path.expanduser("~"))
+        urls.append(QUrl.fromLocalFile(path))
+        data.setUrls(urls)
+        return data
 
 
 class KueFileResult(QAbstractItemDelegate):
