@@ -88,6 +88,9 @@ class KueGeoprocessingTask(QgsTask):
             layer = QgsProject.instance().mapLayer(layer_id)
             if layer:
                 return layer.source()
+            # Gracefully handle passed a layer name
+            if len(QgsProject.instance().mapLayersByName(layer_id)) == 1:
+                return QgsProject.instance().mapLayersByName(layer_id)[0].source()
         return value
 
     def finished(self, result):
