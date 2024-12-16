@@ -120,14 +120,13 @@ class IndexingTask(QgsTask):
             files_to_index = []
             # Build index once
             target_extensions = VECTOR_EXTENSIONS + RASTER_EXTENSIONS
-            for root, _, files in os.walk(self.dir_path):
+            for root, dirs, files in os.walk(self.dir_path):
                 if self.isCanceled():
                     if USE_SQLITE:
                         conn.close()
                     return False
-                # Skip hidden directories
-                if any(part.startswith(".") for part in root.split(os.sep)):
-                    continue
+                # Skip hidden directories by modifying dirs in-place
+                dirs[:] = [d for d in dirs if not d.startswith(".")]
 
                 for file in files:
                     if file.endswith(target_extensions) and not file.startswith("."):
