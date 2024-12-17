@@ -200,7 +200,11 @@ class KuePlugin:
                 for layer in vector_layers
             ],
             "raster_layers": [
-                {"layer_name": layer.name(), "visible": is_layer_visible(layer)}
+                {
+                    "id": layer.id(),
+                    "layer_name": layer.name(),
+                    "visible": is_layer_visible(layer),
+                }
                 for layer in raster_layers
             ],
         }
