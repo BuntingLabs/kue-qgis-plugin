@@ -7,10 +7,11 @@ import string
 from itertools import islice
 import tempfile
 
-from PyQt5.QtWidgets import QAction
+from PyQt5.QtWidgets import QAction, QDialog
 from PyQt5.QtGui import QIcon, QColor, QDesktopServices
 from PyQt5.QtCore import QSettings, Qt, QUrl, QVariant, QDate
 
+from qgis.gui import QgsVectorLayerSaveAsDialog
 from qgis.core import (
     QgsApplication,
     QgsVectorLayer,
@@ -35,6 +36,8 @@ from qgis.core import (
     QgsFeatureRequest,
     NULL as QgsNull,
     QgsField,
+    QgsVectorFileWriter,
+    QgsVectorFileWriterTask,
 )
 from qgis.core import QgsFillSymbol
 
@@ -183,6 +186,7 @@ class KuePlugin:
                     "layer_name": layer.name(),
                     "visible": is_layer_visible(layer),
                     "layer_type": QgsWkbTypes.displayString(layer.wkbType()),
+                    "provider": layer.dataProvider().name(),
                     "symbology": self.getLayerSymbology(layer),
                     "num_features": layer.featureCount(),
                     # For now, give only 1 feature (if present) with islice
@@ -291,6 +295,8 @@ class KuePlugin:
                 self.applyQMLStyle(action["apply_qml_style"])
             if action.get("add_vector_field"):
                 self.addVectorField(action["add_vector_field"])
+            if action.get("saveVectorLayerToFile"):
+                self.saveVectorLayerToFile(action["saveVectorLayerToFile"])
 
         # Execute geoprocessing actions as a task if there are any
         if geoprocessing_actions:
@@ -383,6 +389,78 @@ class KuePlugin:
             layer = layers[0]
         if layer and isinstance(layer, QgsVectorLayer):
             self.iface.openAttributeTable(layer)
+
+    def saveVectorLayerToFile(self, save_action):
+        layer = QgsProject.instance().mapLayer(save_action["layer_id"])
+        if not layer or not isinstance(layer, QgsVectorLayer):
+            self.handleKueError(f"Vector layer {save_action['layer_id']} not found")
+            return
+
+        # Pass as few options as possible
+        dialog = QgsVectorLayerSaveAsDialog(
+            layer, options=QgsVectorLayerSaveAsDialog.Options()
+        )
+        dialog.setAddToCanvas(False)  # manual
+
+        if dialog.exec() != QDialog.Accepted:
+            self.handleKueError("User cancelled saving vector layer")
+            return
+        if dialog.crs() != layer.crs():
+            self.handleKueError("Kue export does not support changing CRS")
+            return
+
+        options = QgsVectorFileWriter.SaveVectorOptions()
+        options.driverName = dialog.format()
+        options.layerName = dialog.layerName()
+        options.includeZ = dialog.includeZ()
+        options.attributes = dialog.selectedAttributes()
+        options.fileEncoding = dialog.encoding()
+        options.symbologyExport = dialog.symbologyExport()
+        options.symbologyScale = dialog.scale()
+        options.onlySelectedFeatures = dialog.onlySelected()
+        options.attributesExportNames = dialog.attributesExportNames()
+        options.skipAttributeCreation = not dialog.selectedAttributes()
+        options.forceMulti = dialog.forceMulti()
+        options.datasourceOptions = dialog.datasourceOptions()
+        options.layerOptions = dialog.layerOptions()
+        options.saveMetadata = dialog.persistMetadata()
+        options.layerMetadata = layer.metadata()
+
+        self.text_dock_widget.addMessage(
+            {
+                "role": "assistant",
+                "msg": f"{layer.name()}: exporting...",
+                "has_button": False,
+            }
+        )
+
+        # Create a separate task, could take a while
+        writerTask = QgsVectorFileWriterTask(layer, dialog.fileName(), options)
+
+        def add_saved_layer(o_filename: str, o_layer_name: str):
+            uri = o_filename
+            if o_layer_name:
+                uri = f"{uri}|layername={o_layer_name}"
+            QgsProject.instance().addMapLayer(QgsVectorLayer(uri, o_layer_name, "ogr"))
+
+        # when writer is successful:
+        writerTask.completed.connect(
+            lambda: add_saved_layer(dialog.fileName(), dialog.layerName())
+        )
+        writerTask.completed.connect(
+            lambda: self.text_dock_widget.addMessage(
+                {
+                    "role": "assistant",
+                    "msg": f"{layer.name()}: exported",
+                    "has_button": False,
+                }
+            )
+        )
+        writerTask.errorOccurred.connect(
+            lambda: self.handleKueError("Failed to export layer")
+        )
+
+        QgsApplication.taskManager().addTask(writerTask)
 
     def addVectorField(self, field_action):
         layer = QgsProject.instance().mapLayer(field_action["layer_id"])
