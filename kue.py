@@ -34,6 +34,7 @@ from qgis.core import (
     QgsExpression,
     QgsFeatureRequest,
     NULL as QgsNull,
+    QgsField,
 )
 from qgis.core import QgsFillSymbol
 
@@ -249,7 +250,9 @@ class KuePlugin:
             if action.get("add_xyz_layer"):
                 self.addXYZLayer(action["add_xyz_layer"])
             if action.get("add_wfs_layer"):
-                self.addWFSLayer(action["add_wfs_layer"])
+                self.createNewVectorLayer(action["add_wfs_layer"])
+            if action.get("create_new_vector_layer"):
+                self.createNewVectorLayer(action["create_new_vector_layer"])
             if action.get("add_wms_layer"):
                 self.addWMSLayer(action["add_wms_layer"])
             if action.get("add_cloud_vector_layer"):
@@ -286,6 +289,8 @@ class KuePlugin:
                 self.setProjection(action["set_projection"])
             if action.get("apply_qml_style"):
                 self.applyQMLStyle(action["apply_qml_style"])
+            if action.get("add_vector_field"):
+                self.addVectorField(action["add_vector_field"])
 
         # Execute geoprocessing actions as a task if there are any
         if geoprocessing_actions:
@@ -378,6 +383,42 @@ class KuePlugin:
             layer = layers[0]
         if layer and isinstance(layer, QgsVectorLayer):
             self.iface.openAttributeTable(layer)
+
+    def addVectorField(self, field_action):
+        layer = QgsProject.instance().mapLayer(field_action["layer_id"])
+        if not layer or not isinstance(layer, QgsVectorLayer):
+            self.handleKueError(f"Vector layer {field_action['layer_id']} not found")
+            return
+
+        FIELD_TYPES = {
+            "string": QVariant.String,
+            "int": QVariant.Int,
+            "double": QVariant.Double,
+            "date": QVariant.Date,
+        }
+
+        if layer.fields().indexOf(field_action["field_name"]) != -1:
+            self.handleKueError(
+                f"Attribute {field_action['field_name']} already exists"
+            )
+            return
+
+        layer.startEditing()
+        layer.addAttribute(
+            QgsField(
+                field_action["field_name"],
+                FIELD_TYPES[field_action["field_type"]],
+            )
+        )
+
+        self.text_dock_widget.addMessage(
+            {
+                "role": "assistant",
+                "msg": f"{layer.name()}: field {field_action['field_name']} added",
+                "has_button": False,
+            }
+        )
+        # Don't commit changes, let the user do that
 
     def setVectorLayerSubsetString(self, subset_action):
         if "layer_id" in subset_action:
@@ -567,10 +608,20 @@ class KuePlugin:
         if layer.isValid():
             QgsProject.instance().addMapLayer(layer)
 
-    def addWFSLayer(self, wfs_action):
-        layer = QgsVectorLayer(wfs_action["url"], wfs_action["name"], "WFS")
+    def createNewVectorLayer(self, new_vector_layer_action):
+        layer = QgsVectorLayer(
+            new_vector_layer_action["url"],
+            new_vector_layer_action["name"],
+            new_vector_layer_action["provider"]
+            if "provider" in new_vector_layer_action
+            else "WFS",
+        )
         if layer.isValid():
             QgsProject.instance().addMapLayer(layer)
+        else:
+            self.handleKueError(
+                f"Failed to add vector layer: {new_vector_layer_action['name']}"
+            )
 
     def addWMSLayer(self, wms_action):
         uri = f"url={wms_action['url']}"
