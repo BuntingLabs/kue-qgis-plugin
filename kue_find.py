@@ -182,7 +182,16 @@ class IndexingTask(QgsTask):
                         continue
 
                 if filename.endswith(VECTOR_EXTENSIONS):
-                    ds = ogr.Open(full_path)
+                    # Get extent and transform if needed
+                    try:
+                        ds = ogr.Open(full_path)
+                    except Exception:
+                        QgsMessageLog.logMessage(
+                            f"Failed to open {os.path.basename(full_path)}",
+                            "KueFind",
+                            level=Qgis.Warning,
+                        )
+                        continue
                     if ds is None:
                         continue
                     layer = ds.GetLayer(0)
@@ -257,8 +266,19 @@ class IndexingTask(QgsTask):
                     geom_type = None
                     bbox = None
 
-                    ds = gdal.Open(full_path)
-                    if ds:
+                    try:
+                        ds = gdal.Open(full_path)
+                    except Exception:
+                        QgsMessageLog.logMessage(
+                            f"Failed to open {os.path.basename(full_path)}",
+                            "KueFind",
+                            level=Qgis.Warning,
+                        )
+                        continue
+                    if ds is None:
+                        continue
+
+                    try:
                         geotransform = ds.GetGeoTransform()
                         if geotransform:
                             width = ds.RasterXSize
@@ -293,23 +313,23 @@ class IndexingTask(QgsTask):
                                 point_ne = ogr.CreateGeometryFromWkt(
                                     f"POINT ({bbox[2]} {bbox[3]})"
                                 )  # max_lon,max_lat
-                                try:
-                                    point_sw.Transform(transform)
-                                    point_ne.Transform(transform)
 
-                                    bbox = (
-                                        point_sw.GetX(),
-                                        point_sw.GetY(),
-                                        point_ne.GetX(),
-                                        point_ne.GetY(),
-                                    )
-                                except Exception:
-                                    QgsMessageLog.logMessage(
-                                        f"Coordinate transform failed for {os.path.basename(full_path)}",
-                                        "KueFind",
-                                        level=Qgis.Warning,
-                                    )
-                                    bbox = None
+                                point_sw.Transform(transform)
+                                point_ne.Transform(transform)
+
+                                bbox = (
+                                    point_sw.GetX(),
+                                    point_sw.GetY(),
+                                    point_ne.GetX(),
+                                    point_ne.GetY(),
+                                )
+                    except Exception:
+                        QgsMessageLog.logMessage(
+                            f"Coordinate transform failed for {os.path.basename(full_path)}",
+                            "KueFind",
+                            level=Qgis.Warning,
+                        )
+                        bbox = None
 
                     ds = None
 
