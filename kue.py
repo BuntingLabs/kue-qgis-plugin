@@ -190,6 +190,7 @@ class KuePlugin:
                     "provider": layer.dataProvider().name(),
                     "symbology": self.getLayerSymbology(layer),
                     "num_features": layer.featureCount(),
+                    "crs": layer.crs().authid(),
                     # For now, give only 1 feature (if present) with islice
                     "attribute_example": [
                         {
@@ -210,6 +211,7 @@ class KuePlugin:
                     "id": layer.id(),
                     "layer_name": layer.name(),
                     "visible": is_layer_visible(layer),
+                    "crs": layer.crs().authid(),
                 }
                 for layer in raster_layers
             ],
