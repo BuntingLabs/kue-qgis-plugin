@@ -53,7 +53,7 @@ class KuePlugin:
         self.iface = iface
         self.settings = QSettings()
 
-        self.kue_find = KueFind()
+        self.kue_find = KueFind(iface)
 
         # Read the plugin version
         try:
@@ -76,11 +76,11 @@ class KuePlugin:
 
         # Load the greeting message
         locale = QSettings().value("locale/userLocale", "en_US")
-        lang = locale[2:] if isinstance(locale, str) and len(locale) > 2 else "en"
+        self.lang = locale[2:] if isinstance(locale, str) and len(locale) > 2 else "en"
         self.starter_messages = KUE_INTRODUCTION_MESSAGES.get(
-            lang, KUE_INTRODUCTION_MESSAGES["en"]
+            self.lang, KUE_INTRODUCTION_MESSAGES["en"]
         )
-        self.ask_kue_message = KUE_ASK_KUE.get(lang, KUE_ASK_KUE["en"])
+        self.ask_kue_message = KUE_ASK_KUE.get(self.lang, KUE_ASK_KUE["en"])
 
         self.task_trash = []
 
@@ -99,6 +99,7 @@ class KuePlugin:
             self.authenticateUser,
             self.kue_find,
             self.ask_kue_message,
+            self.lang,
         )
 
         for msg in self.starter_messages:

@@ -13,6 +13,7 @@ from PyQt5.QtWidgets import (
     QListWidgetItem,
     QLabel,
     QTextEdit,
+    QCheckBox,
 )
 from PyQt5.QtCore import Qt, QSettings, QTimer
 from qgis.core import QgsVectorLayer, QgsRasterLayer, QgsProject
@@ -22,6 +23,7 @@ from typing import Callable
 import os
 import re
 from .kue_find import KueFind, VECTOR_EXTENSIONS, RASTER_EXTENSIONS
+from .kue_messages import KUE_FIND_FILTER_EXPLANATION
 
 
 class KueSidebar(QDockWidget):
@@ -32,6 +34,7 @@ class KueSidebar(QDockWidget):
         authenticateUser: Callable,
         kue_find: KueFind,
         ask_kue_message: str,
+        lang: str,
     ):
         super().__init__("Kue", iface.mainWindow())
 
@@ -40,8 +43,16 @@ class KueSidebar(QDockWidget):
         self.messageSent = messageSent
         self.authenticateUser = authenticateUser
         self.kue_find = kue_find
+        self.lang = lang
         # The parent widget is either kue or auth
         self.parent_widget = QStackedWidget()
+
+        # Connect to map canvas extent changes
+        self.iface.mapCanvas().extentsChanged.connect(self.maybeUpdateFindResults)
+        # Also update when indexing is done, regardless of bbox checkbox
+        self.kue_find.filesIndexed.connect(
+            lambda cnt: self.maybeUpdateFindResults(only_for_bbox=False)
+        )
 
         # Add auth widget
         self.auth_widget = QWidget()
@@ -125,6 +136,13 @@ class KueSidebar(QDockWidget):
         self.find_widget = QWidget()
         self.find_layout = QVBoxLayout()
         self.find_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Add checkbox above results
+        translated_explanation = KUE_FIND_FILTER_EXPLANATION.get(
+            lang, KUE_FIND_FILTER_EXPLANATION["en"]
+        )
+        self.map_canvas_filter = QCheckBox(translated_explanation)
+        self.find_layout.addWidget(self.map_canvas_filter)
 
         self.find_results = FileListWidget()
         self.find_results.setWordWrap(True)
@@ -261,8 +279,10 @@ class KueSidebar(QDockWidget):
             query = text[5:].strip()
             self.find_results.clear()
 
-            # Search
-            results = self.kue_find.search(query)
+            # Search with checkbox state
+            results = self.kue_find.search(
+                query, filter_for_map_canvas=self.map_canvas_filter.isChecked()
+            )
             for path, atime, file_type, geom_type, location in results:
                 item = QListWidgetItem()
                 item.setData(
@@ -287,6 +307,18 @@ class KueSidebar(QDockWidget):
                 self.find_results.addItem(item)
         else:
             self.above_mb_widget.setCurrentIndex(0)
+
+    def maybeUpdateFindResults(self, only_for_bbox: bool = True):
+        if only_for_bbox and not self.map_canvas_filter.isChecked():
+            return
+        # Only update if find widget is visible and has a filter
+        if (
+            self.isVisible()
+            and self.above_mb_widget.currentIndex() == 1
+            # and self.map_canvas_filter.isChecked()
+            and self.textbox.text().startswith("/find")
+        ):
+            self.onTextUpdate(self.textbox.text())
 
 
 from PyQt5.QtWidgets import QAbstractItemDelegate

@@ -60,3 +60,17 @@ KUE_ASK_KUE = {
     "lv": "Jautāt Kue...",
     "pl": "Zapytaj Kue...",
 }
+
+KUE_FIND_FILTER_EXPLANATION = {
+    "en": "Filter for files in map canvas",
+    "pt": "Filtrar arquivos no canvas do mapa",
+    "fr": "Filtrer les fichiers dans le canevas de carte",
+    "de": "Dateien in der Kartenansicht filtern",
+    "es": "Filtrar archivos en el lienzo del mapa",
+    "it": "Filtra i file nel canvas della mappa",
+    "hi": "मानचित्र कैनवास में फ़ाइलें फ़िल्टर करें",
+    "bn": "ম্যাপ ক্যানভাসে ফাইল ফিল্টার করুন",
+    "he": "סנן קבצים בקנבס המפה",
+    "lv": "Filtrēt failus kartes kanvā",
+    "pl": "Filtruj pliki na kanwie mapy",
+}

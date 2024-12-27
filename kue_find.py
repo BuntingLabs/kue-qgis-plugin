@@ -16,7 +16,12 @@ from qgis.core import (
     QgsApplication,
     Qgis,
     QgsMessageLog,
+    QgsProject,
+    QgsCoordinateTransform,
 )
+from PyQt5.QtCore import pyqtSignal
+
+from .kue_messages import KUE_FIND_FILTER_EXPLANATION
 
 # I'm not sure sqlite3 is always available.
 KUE_SQLITE_PATH = os.path.join(os.path.dirname(__file__), "find_file_index.sqlite")
@@ -389,8 +394,16 @@ class IndexingTask(QgsTask):
             self.setProgress(100)
 
 
-class KueFind:
-    def __init__(self):
+from PyQt5.QtCore import QObject
+
+
+class KueFind(QObject):
+    filesIndexed = pyqtSignal(int)
+
+    def __init__(self, iface):
+        super().__init__()
+
+        self.iface = iface
         self.files = []
         self.bbox_finder = BBoxFinder(
             os.path.join(os.path.dirname(__file__), "regions_and_countries.csv")
@@ -405,6 +418,7 @@ class KueFind:
         def task_completed(exception=None, result=None):
             if exception is None:
                 self.files = self.index_task.files
+                self.filesIndexed.emit(len(self.files))
             self.index_task = None
 
         self.index_task.taskCompleted.connect(task_completed)
@@ -413,7 +427,7 @@ class KueFind:
         QgsApplication.taskManager().addTask(self.index_task)
         self.index_task_trash.append(self.index_task)  # Prevent garbage collection
 
-    def search(self, query: str, n: int = 12):
+    def search(self, query: str, filter_for_map_canvas: bool = False, n: int = 12):
         # Start indexing if not already started
         if not self.files and self.index_task is None:
             self.index(os.path.expanduser("~"))
@@ -427,6 +441,40 @@ class KueFind:
             for f in self.files
             if all(word in f["path"].lower() for word in query_words)
         ]
+
+        # Filter for map canvas if requested
+        if filter_for_map_canvas and self.iface.mapCanvas():
+            canvas_extent = self.iface.mapCanvas().extent()
+
+            # Transform extent to EPSG:4326 if needed
+            project_crs = self.iface.mapCanvas().mapSettings().destinationCrs()
+            if project_crs != QgsCoordinateReferenceSystem("EPSG:4326"):
+                try:
+                    transform = QgsCoordinateTransform(
+                        project_crs,
+                        QgsCoordinateReferenceSystem("EPSG:4326"),
+                        QgsProject.instance(),
+                    )
+                    canvas_extent = transform.transformBoundingBox(canvas_extent)
+                except Exception as e:
+                    QgsMessageLog.logMessage(
+                        f"Failed to transform canvas extent to EPSG:4326: {e}",
+                        "KueFind",
+                        level=Qgis.Warning,
+                    )
+
+            canvas_bbox = (
+                canvas_extent.xMinimum(),
+                canvas_extent.yMinimum(),
+                canvas_extent.xMaximum(),
+                canvas_extent.yMaximum(),
+            )
+
+            matching_files = [
+                f
+                for f in matching_files
+                if f["bbox"] is None or self._bboxes_intersect(f["bbox"], canvas_bbox)
+            ]
 
         # Sort by last accessed time, most recent first
         results = sorted(
@@ -443,6 +491,15 @@ class KueFind:
             )
             for f in results
         ]
+
+    def _bboxes_intersect(self, bbox1, bbox2):
+        """Check if two bounding boxes intersect"""
+        return not (
+            bbox1[2] < bbox2[0]  # bbox1 is left of bbox2
+            or bbox1[0] > bbox2[2]  # bbox1 is right of bbox2
+            or bbox1[3] < bbox2[1]  # bbox1 is below bbox2
+            or bbox1[1] > bbox2[3]  # bbox1 is above bbox2
+        )
 
 
 class BBoxFinder:
