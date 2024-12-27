@@ -356,6 +356,12 @@ class IndexingTask(QgsTask):
             QgsMessageLog.logMessage(
                 f"Got caught exception: {e}", "KueFind", level=Qgis.Warning
             )
+
+            # Uncaught exception, but still close out so it doesn't hang.
+            if USE_SQLITE:
+                conn.commit()
+                conn.close()
+
             return False
 
     def finished(self, result):
