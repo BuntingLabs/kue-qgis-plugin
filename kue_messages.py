@@ -1,5 +1,29 @@
 # Copyright 2024 Bunting Labs, Inc.
 
+from enum import Enum
+
+
+class KueResponseStatus(str, Enum):
+    OK = "OK"
+    AMBIGUOUS = "AMBIGUOUS"
+    USER_CANCELLED = "USER_CANCELLED"
+    ERROR = "ERROR"
+    POLLING = "POLLING"
+
+
+def status_to_color(status: KueResponseStatus) -> str:
+    if status == KueResponseStatus.OK:
+        return "green"
+    elif status == KueResponseStatus.AMBIGUOUS:
+        return "orange"
+    elif status == KueResponseStatus.USER_CANCELLED:
+        return "red"
+    elif status == KueResponseStatus.ERROR:
+        return "red"
+    elif status == KueResponseStatus.POLLING:
+        return "orange"
+
+
 KUE_INTRODUCTION_MESSAGES = {
     "en": [
         "I'm Kue, an AI assistant that can read and edit QGIS projects.",

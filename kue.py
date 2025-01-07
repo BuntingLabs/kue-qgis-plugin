@@ -6,7 +6,10 @@ import secrets
 import string
 from itertools import islice
 import tempfile
-
+import json
+from enum import Enum
+import base64
+from typing import Callable
 from PyQt5.QtWidgets import QAction, QDialog
 from PyQt5.QtGui import QIcon, QColor, QDesktopServices
 from PyQt5.QtCore import QSettings, Qt, QUrl, QVariant, QDate
@@ -33,6 +36,7 @@ from qgis.core import (
     QgsDataSourceUri,
     QgsExpression,
     QgsFeatureRequest,
+    QgsVirtualLayerDefinition,
     NULL as QgsNull,
     QgsField,
     QgsVectorFileWriter,
@@ -41,10 +45,16 @@ from qgis.core import (
 from qgis.core import QgsFillSymbol
 
 from .kue_task import KueTask
-from .kue_geoprocessing import KueGeoprocessingTask
-from .kue_messages import KUE_INTRODUCTION_MESSAGES, KUE_ASK_KUE
+from .kue_messages import (
+    KUE_INTRODUCTION_MESSAGES,
+    KUE_ASK_KUE,
+    KueResponseStatus,
+    status_to_color,
+)
 from .kue_sidebar import KueSidebar
 from .kue_find import KueFind
+from .kue_feedback import KueFeedback
+from .kue_poll import KuePollingTask
 
 
 class KuePlugin:
@@ -71,6 +81,8 @@ class KuePlugin:
             None,
         )
 
+        self.chat_message_id = None
+
         self.text_dock_widget = None
 
         # Load the greeting message
@@ -94,7 +106,7 @@ class KuePlugin:
 
         self.text_dock_widget = KueSidebar(
             self.iface,
-            self.onEnterClicked,
+            self.messageSent,
             self.authenticateUser,
             self.kue_find,
             self.ask_kue_message,
@@ -240,83 +252,236 @@ class KuePlugin:
             return {"type": "unknown"}
 
     def setProjection(self, projection_action):
-        QgsProject.instance().setCrs(
-            QgsCoordinateReferenceSystem(f"EPSG:{projection_action['epsg_code']}")
-        )
+        crs = QgsCoordinateReferenceSystem(f"EPSG:{projection_action['epsg_code']}")
+        if crs.isValid():
+            QgsProject.instance().setCrs(crs)
+            return {
+                "status": KueResponseStatus.OK,
+                "message": "Set projection to EPSG:"
+                + str(projection_action["epsg_code"]),
+            }
+        else:
+            return {"status": KueResponseStatus.ERROR, "message": "Invalid CRS"}
 
     def handleKueResponse(self, data):
-        geoprocessing_actions = []
+        def handle_response(r):
+            for action in data.get("actions", []):
+                for k, v in action.items():
+                    if "kue_action_id" in v:
+                        r["kue_action_id"] = v["kue_action_id"]
+                    if "kue_action_svg" in v:
+                        r["kue_action_svg"] = v["kue_action_svg"]
+            if "kue_action_id" in r:
+                if not ("status" in r and r["status"] == KueResponseStatus.POLLING):
+                    self.messageSent(json.dumps(r), False)
 
+                if "kue_action_svg" in r:
+                    self.text_dock_widget.addAction(r)
+
+        resp = self.actionsToResponses(data, handle_response)
+        if resp:
+            handle_response(resp)
+
+    def actionsToResponses(self, data, callback: Callable):
         for action in data.get("actions", []):
             if action.get("geoprocessing"):
-                geoprocessing_actions.append(action)
+                from qgis.core import (
+                    QgsProcessingContext,
+                    QgsProcessingAlgRunnerTask,
+                    QgsProcessingFeedback,
+                )
+                from processing.core.ProcessingConfig import ProcessingConfig
+
+                previous_invalid_setting = ProcessingConfig.getSetting(
+                    ProcessingConfig.FILTER_INVALID_GEOMETRIES
+                )
+                try:
+                    skip_idx = ProcessingConfig.settings[
+                        "FILTER_INVALID_GEOMETRIES"
+                    ].options.index("Skip (ignore) features with invalid geometries")
+                    ProcessingConfig.setSettingValue(
+                        ProcessingConfig.FILTER_INVALID_GEOMETRIES, skip_idx
+                    )
+                except ValueError:
+                    pass
 
                 alg = QgsApplication.processingRegistry().algorithmById(
                     action["geoprocessing"]["id"]
                 )
-                if alg:
-                    self.text_dock_widget.addMessage(
-                        {
-                            "role": "geoprocessing",
-                            "msg": f"Running {alg.displayName()}...",
-                        }
+                feedback = KueFeedback()
+                self.task_trash.append(feedback)
+                context = QgsProcessingContext()
+                self.task_trash.append(context)
+                context.setProject(QgsProject.instance())
+
+                def transform_parameter(value: str) -> str:
+                    if value.startswith("§"):
+                        layer_id = value[1:]
+                        layer = QgsProject.instance().mapLayer(layer_id)
+                        if layer:
+                            return layer.source()
+                        if len(QgsProject.instance().mapLayersByName(layer_id)) == 1:
+                            return (
+                                QgsProject.instance()
+                                .mapLayersByName(layer_id)[0]
+                                .source()
+                            )
+                    return value
+
+                # Transform parameters if needed
+                parameters = action["geoprocessing"]["parameters"]
+                for key, value in parameters.items():
+                    if isinstance(value, str):
+                        parameters[key] = transform_parameter(value)
+                    elif isinstance(value, list):
+                        parameters[key] = [
+                            transform_parameter(v) if isinstance(v, str) else v
+                            for v in value
+                        ]
+                self.task_trash.append(parameters)
+                self.task_trash.append(alg)
+
+                task = QgsProcessingAlgRunnerTask(alg, parameters, context, feedback)
+                self.task_trash.append(task)
+
+                def completed(successful: bool, results: dict):
+                    ProcessingConfig.setSettingValue(
+                        ProcessingConfig.FILTER_INVALID_GEOMETRIES,
+                        previous_invalid_setting,
                     )
-                continue
+
+                    if successful and "OUTPUT" in results:
+                        layer = None
+
+                        output_layer = context.getMapLayer(results["OUTPUT"])
+                        if output_layer:
+                            layer = context.takeResultLayer(output_layer.id())
+                        elif os.path.exists(results["OUTPUT"]) and os.path.isfile(
+                            results["OUTPUT"]
+                        ):
+                            if results["OUTPUT"].endswith(".tif"):
+                                layer = QgsRasterLayer(results["OUTPUT"], "OUTPUT")
+                            else:
+                                layer = QgsVectorLayer(
+                                    results["OUTPUT"], "OUTPUT", "ogr"
+                                )
+
+                        if layer and layer.isValid():
+                            QgsProject.instance().addMapLayer(layer)
+                            callback(
+                                {
+                                    "status": KueResponseStatus.OK,
+                                    "feature_count": layer.featureCount()
+                                    if isinstance(layer, QgsVectorLayer)
+                                    else None,
+                                    "results": results,
+                                    "message": f"{alg.displayName()} completed",
+                                    "feedback": str(feedback),
+                                }
+                            )
+                        else:
+                            callback(
+                                {
+                                    "status": KueResponseStatus.AMBIGUOUS,
+                                    "results": results,
+                                    "message": f"{alg.displayName()} completed but output layer is invalid or did not exist",
+                                    "feedback": str(feedback),
+                                }
+                            )
+                    elif successful:
+                        callback(
+                            {
+                                "status": KueResponseStatus.OK,
+                                "results": results,
+                                "message": f"{alg.displayName()} completed",
+                                "feedback": str(feedback),
+                            }
+                        )
+                    else:
+                        # Handle failure response
+                        if feedback.isCanceled():
+                            callback(
+                                {
+                                    "status": KueResponseStatus.USER_CANCELLED,
+                                    "message": f"{alg.displayName()} cancelled by user",
+                                    "feedback": str(feedback),
+                                }
+                            )
+                        else:
+                            callback(
+                                {
+                                    "status": KueResponseStatus.ERROR,
+                                    "message": f"{alg.displayName()} failed: {results}",
+                                    "feedback": str(feedback),
+                                }
+                            )
+
+                task.executed.connect(completed)
+
+                # Start the task
+                QgsApplication.taskManager().addTask(task)
+                return
 
             # Handle all non-geoprocessing actions immediately
             if action.get("add_xyz_layer"):
-                self.addXYZLayer(action["add_xyz_layer"])
+                return self.addXYZLayer(action["add_xyz_layer"])
             if action.get("add_wfs_layer"):
-                self.createNewVectorLayer(action["add_wfs_layer"])
+                return self.createNewVectorLayer(action["add_wfs_layer"])
             if action.get("create_new_vector_layer"):
-                self.createNewVectorLayer(action["create_new_vector_layer"])
+                return self.createNewVectorLayer(action["create_new_vector_layer"])
             if action.get("add_wms_layer"):
-                self.addWMSLayer(action["add_wms_layer"])
+                return self.addWMSLayer(action["add_wms_layer"])
             if action.get("add_cloud_vector_layer"):
-                self.addCloudVectorLayer(action["add_cloud_vector_layer"])
+                return self.addCloudVectorLayer(action["add_cloud_vector_layer"])
+            if action.get("poll"):
+                polling_task = KuePollingTask(action["poll"])
+                polling_task.streamingActionReceived.connect(
+                    lambda action: self.handleKueResponse(action)
+                )
+                polling_task.taskCompleted.connect(print)
+                polling_task.taskTerminated.connect(print)
+                self.task_trash.append(polling_task)
+                QgsApplication.taskManager().addTask(polling_task)
+
+                # Add to sidebar, orange as its loading
+                return {
+                    "status": KueResponseStatus.POLLING,
+                    "message": action["poll"]["description"],
+                }
             if action.get("add_arcgis_rest_server_layer"):
-                self.addArcGISFeatureServerLayer(action["add_arcgis_rest_server_layer"])
+                return self.addArcGISFeatureServerLayer(
+                    action["add_arcgis_rest_server_layer"]
+                )
             if action.get("set_vector_single_symbol"):
-                self.setVectorSingleSymbology(action["set_vector_single_symbol"])
+                return self.setVectorSingleSymbology(action["set_vector_single_symbol"])
             if action.get("set_vector_categorized_symbol"):
-                self.setVectorCategorizedSymbol(action["set_vector_categorized_symbol"])
+                return self.setVectorCategorizedSymbol(
+                    action["set_vector_categorized_symbol"]
+                )
             if action.get("set_vector_graduated_symbol"):
-                self.setVectorGraduatedSymbol(action["set_vector_graduated_symbol"])
+                return self.setVectorGraduatedSymbol(
+                    action["set_vector_graduated_symbol"]
+                )
             if action.get("zoom_to_bounding_box"):
-                self.zoomToBoundingBox(action["zoom_to_bounding_box"])
+                return self.zoomToBoundingBox(action["zoom_to_bounding_box"])
             if action.get("set_vector_labels"):
-                self.setVectorLabels(action["set_vector_labels"])
+                return self.setVectorLabels(action["set_vector_labels"])
             if action.get("set_layer_visibility"):
-                self.setLayerVisibility(action["set_layer_visibility"])
-            if action.get("suggest_pyqgis_code"):
-                self.suggestPyQGISCode(action["suggest_pyqgis_code"])
+                return self.setLayerVisibility(action["set_layer_visibility"])
             if action.get("set_vector_layer_subset_string"):
-                self.setVectorLayerSubsetString(
+                return self.setVectorLayerSubsetString(
                     action["set_vector_layer_subset_string"]
                 )
             if action.get("select_features"):
-                self.selectFeatures(action["select_features"])
-            if action.get("chat"):
-                self.text_dock_widget.addMessage(
-                    {"role": "assistant", "msg": action["chat"]["message"]}
-                )
-            if action.get("display_datasets"):
-                self.displayDatasets(action["display_datasets"])
+                return self.selectFeatures(action["select_features"])
             if action.get("set_projection"):
-                self.setProjection(action["set_projection"])
+                return self.setProjection(action["set_projection"])
             if action.get("apply_qml_style"):
-                self.applyQMLStyle(action["apply_qml_style"])
+                return self.applyQMLStyle(action["apply_qml_style"])
             if action.get("add_vector_field"):
-                self.addVectorField(action["add_vector_field"])
+                return self.addVectorField(action["add_vector_field"])
             if action.get("saveVectorLayerToFile"):
-                self.saveVectorLayerToFile(action["saveVectorLayerToFile"])
-
-        # Execute geoprocessing actions as a task if there are any
-        if geoprocessing_actions:
-            task = KueGeoprocessingTask(self, geoprocessing_actions)
-            task.errorReceived.connect(self.handleKueError)
-            QgsApplication.taskManager().addTask(task)
-            self.task_trash.append(task)  # Prevent garbage collection
+                return self.saveVectorLayerToFile(action["saveVectorLayerToFile"])
 
     def applyQMLStyle(self, style_json):
         vl = QgsProject.instance().mapLayer(style_json["layer_id"])
@@ -335,18 +500,20 @@ class KuePlugin:
                 if isinstance(output, tuple) and len(output) == 2:
                     result_error, was_ok = output
                     if not was_ok:
-                        self.handleKueError(f"Could not style layer: {result_error}")
+                        return {
+                            "status": KueResponseStatus.ERROR,
+                            "message": f"Could not style layer: {result_error}",
+                        }
                 vl.triggerRepaint()
+                return {
+                    "status": KueResponseStatus.OK,
+                    "message": f"{vl.name()}: styled",
+                }
 
-    def displayDatasets(self, action):
-        message = action["message"]
-        datasets = action["datasets"]
-        html = f"{message}<br>"
-        for dataset in datasets:
-            html += f'<div style="padding: 8px;"><a href="{dataset["url"]}" style="color: #0066cc; text-decoration: none;" onmouseover="this.style.color=\'#003366\'" onmouseout="this.style.color=\'#0066cc\'">{dataset["title"]}</a><br><span style="color: #000000;">{dataset["description"]}</span></div>'
-
-        self.text_dock_widget.addMessage({"role": "assistant", "msg": html})
-        # self.updateChatDisplay()
+        return {
+            "status": KueResponseStatus.ERROR,
+            "message": f"No layer ID {style_json['layer_id']} found",
+        }
 
     def setVectorLabels(self, label_action):
         if "layer_id" in label_action:
@@ -354,7 +521,10 @@ class KuePlugin:
         else:
             layers = QgsProject.instance().mapLayersByName(label_action["layer_name"])
             if not layers:
-                return
+                return {
+                    "status": KueResponseStatus.ERROR,
+                    "message": "Kue could not find vector layer",
+                }
             layer = layers[0]
         if isinstance(layer, QgsVectorLayer):
             label_settings = QgsPalLayerSettings()
@@ -376,6 +546,16 @@ class KuePlugin:
             layer.setLabeling(layer_settings)
             layer.triggerRepaint()
 
+            return {
+                "status": KueResponseStatus.OK,
+                "message": f"{layer.name()}: labels enabled",
+            }
+        else:
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": "Kue could not find vector layer",
+            }
+
     def zoomToBoundingBox(self, bbox):
         source_crs = QgsCoordinateReferenceSystem("EPSG:4326")
         rectangle = QgsRectangle(bbox["xmin"], bbox["ymin"], bbox["xmax"], bbox["ymax"])
@@ -389,6 +569,11 @@ class KuePlugin:
             self.iface.mapCanvas().refresh()
         except Exception as e:
             self.handleKueError(f"Failed to zoom to bounding box: {e}")
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": f"Failed to zoom to bounding box: {e}",
+            }
+        return {"status": KueResponseStatus.OK, "message": "Zoomed"}
 
     def openAttributeTable(self, layer_name):
         if (
@@ -407,15 +592,17 @@ class KuePlugin:
         try:
             from qgis.gui import QgsVectorLayerSaveAsDialog
         except ImportError:
-            self.handleKueError(
-                "Saving vector layers to file is not supported in QGIS versions prior to 3.30."
-            )
-            return
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": "Saving vector layers to file is not supported in QGIS versions prior to 3.30.",
+            }
 
         layer = QgsProject.instance().mapLayer(save_action["layer_id"])
         if not layer or not isinstance(layer, QgsVectorLayer):
-            self.handleKueError(f"Vector layer {save_action['layer_id']} not found")
-            return
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": f"Kue could not find vector layer: {save_action['layer_id']}",
+            }
 
         # Pass as few options as possible
         dialog = QgsVectorLayerSaveAsDialog(
@@ -424,11 +611,15 @@ class KuePlugin:
         dialog.setAddToCanvas(False)  # manual
 
         if dialog.exec() != QDialog.Accepted:
-            self.handleKueError("User cancelled saving vector layer")
-            return
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": "User cancelled saving vector layer",
+            }
         if dialog.crs() != layer.crs():
-            self.handleKueError("Kue export does not support changing CRS")
-            return
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": "Kue export does not support changing CRS",
+            }
 
         options = QgsVectorFileWriter.SaveVectorOptions()
         options.driverName = dialog.format()
@@ -483,11 +674,18 @@ class KuePlugin:
 
         QgsApplication.taskManager().addTask(writerTask)
 
+        return {
+            "status": KueResponseStatus.OK,
+            "message": f"{layer.name()}: exporting...",
+        }
+
     def addVectorField(self, field_action):
         layer = QgsProject.instance().mapLayer(field_action["layer_id"])
         if not layer or not isinstance(layer, QgsVectorLayer):
-            self.handleKueError(f"Vector layer {field_action['layer_id']} not found")
-            return
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": f"Kue could not find vector layer: {field_action['layer_id']}",
+            }
 
         FIELD_TYPES = {
             "string": QVariant.String,
@@ -497,10 +695,10 @@ class KuePlugin:
         }
 
         if layer.fields().indexOf(field_action["field_name"]) != -1:
-            self.handleKueError(
-                f"Attribute {field_action['field_name']} already exists"
-            )
-            return
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": f"Attribute {field_action['field_name']} already exists",
+            }
 
         layer.startEditing()
         layer.addAttribute(
@@ -510,13 +708,10 @@ class KuePlugin:
             )
         )
 
-        self.text_dock_widget.addMessage(
-            {
-                "role": "assistant",
-                "msg": f"{layer.name()}: field {field_action['field_name']} added",
-                "has_button": False,
-            }
-        )
+        return {
+            "status": KueResponseStatus.OK,
+            "message": f"{layer.name()}: field {field_action['field_name']} added",
+        }
         # Don't commit changes, let the user do that
 
     def setVectorLayerSubsetString(self, subset_action):
@@ -529,36 +724,25 @@ class KuePlugin:
             layer = layers[0]
         if layer and isinstance(layer, QgsVectorLayer):
             if not layer.setSubsetString(subset_action["subset_string"]):
-                self.text_dock_widget.addMessage(
-                    {
-                        "role": "error",
-                        "msg": "Failed to set subset string",
-                        "has_button": False,
-                    }
-                )
+                return {
+                    "status": KueResponseStatus.ERROR,
+                    "message": "Failed to set subset string",
+                }
             else:
-                self.text_dock_widget.addMessage(
-                    {
-                        "role": "assistant",
-                        "msg": f"{layer.name()}: {subset_action['subset_string']}",
-                        "has_button": False,
-                    }
-                )
-            layer.triggerRepaint()
+                return {
+                    "status": KueResponseStatus.OK,
+                    "message": f"{layer.name()}: {subset_action['subset_string']}",
+                }
 
     def selectFeatures(self, select_action):
         layer = QgsProject.instance().mapLayer(select_action["layer_id"])
         if layer and isinstance(layer, QgsVectorLayer):
             expression = QgsExpression(select_action["sql_expression"])
             if expression.hasParserError():
-                self.text_dock_widget.addMessage(
-                    {
-                        "role": "error",
-                        "msg": f"Kue created invalid SQL query: {expression.parserErrorString()}",
-                        "has_button": False,
-                    }
-                )
-                return
+                return {
+                    "status": KueResponseStatus.ERROR,
+                    "message": f"Kue created invalid SQL query: {expression.parserErrorString()}",
+                }
 
             request = QgsFeatureRequest(expression)
             matching_features = list(layer.getFeatures(request))
@@ -566,21 +750,18 @@ class KuePlugin:
             total_count = layer.featureCount()
             layer_name = layer.name()
 
-            self.text_dock_widget.addMessage(
-                {
-                    "role": "assistant",
-                    "msg": f"{layer_name}: `{select_action['sql_expression']}` ({len(matching_features)}/{total_count})",
-                    "has_button": False,
-                }
-            )
+            return {
+                "status": KueResponseStatus.OK,
+                "selected_features": len(matching_features),
+                "layer_feature_count": total_count,
+                "sql_expression": select_action["sql_expression"],
+                "message": f"{layer_name}: `{select_action['sql_expression']}` ({len(matching_features)}/{total_count})",
+            }
         else:
-            self.text_dock_widget.addMessage(
-                {
-                    "role": "error",
-                    "msg": "Kue could not find that vector layer.",
-                    "has_button": False,
-                }
-            )
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": f"Kue could not find vector layer: {select_action['layer_id']}",
+            }
 
     def setVectorSingleSymbology(self, symbology_action):
         if "layer_id" in symbology_action:
@@ -599,6 +780,15 @@ class KuePlugin:
             renderer = QgsSingleSymbolRenderer(symbol)
             layer.setRenderer(renderer)
             layer.triggerRepaint()
+            return {
+                "status": KueResponseStatus.OK,
+                "message": f"{layer.name()}: set single symbol",
+            }
+        else:
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": f"Kue could not find vector layer: {symbology_action['layer_name']}",
+            }
 
     def setVectorCategorizedSymbol(self, symbology_action):
         if "layer_id" in symbology_action:
@@ -608,7 +798,10 @@ class KuePlugin:
                 symbology_action["layer_name"]
             )
             if not layers:
-                return
+                return {
+                    "status": KueResponseStatus.ERROR,
+                    "message": "Kue could not find vector layer",
+                }
             layer = layers[0]
         if layer and isinstance(layer, QgsVectorLayer):
             field_name = symbology_action["field_name"]
@@ -634,6 +827,16 @@ class KuePlugin:
             layer.setRenderer(renderer)
             layer.triggerRepaint()
 
+            return {
+                "status": KueResponseStatus.OK,
+                "message": f"{layer.name()}: set categorized symbol",
+            }
+        else:
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": "Kue could not find vector layer",
+            }
+
     def setVectorGraduatedSymbol(self, symbology_action):
         if "layer_id" in symbology_action:
             layer = QgsProject.instance().mapLayer(symbology_action["layer_id"])
@@ -642,7 +845,10 @@ class KuePlugin:
                 symbology_action["layer_name"]
             )
             if not layers:
-                return
+                return {
+                    "status": KueResponseStatus.ERROR,
+                    "message": "Kue could not find vector layer",
+                }
             layer = layers[0]
         if layer and isinstance(layer, QgsVectorLayer):
             field_name = symbology_action["field_name"]
@@ -659,10 +865,10 @@ class KuePlugin:
             field_index = layer.fields().indexFromName(field_name)
             min_val, max_val = layer.minimumAndMaximumValue(field_index)
             if min_val is None or max_val is None:
-                self.handleKueError(
-                    f"Can't read min/max values for {layer.name()}, try re-exporting to a Shapefile."
-                )
-                return
+                return {
+                    "status": KueResponseStatus.ERROR,
+                    "message": f"Can't read min/max values for {layer.name()}, try re-exporting to a Shapefile.",
+                }
             interval = (max_val - min_val) / classes
 
             # Choose one of 4 diverging color ramps randomly
@@ -701,35 +907,65 @@ class KuePlugin:
             layer.setRenderer(renderer)
             layer.triggerRepaint()
 
+            return {
+                "status": KueResponseStatus.OK,
+                "message": f"{layer.name()}: set graduated symbol",
+            }
+        else:
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": "Kue could not find vector layer",
+            }
+
     def addXYZLayer(self, xyz_action):
         uri = f"type=xyz&url={xyz_action['url']}"
         layer = QgsRasterLayer(uri, xyz_action["name"], "wms")
         if layer.isValid():
             QgsProject.instance().addMapLayer(layer)
+            return {
+                "status": KueResponseStatus.OK,
+                "message": f"{layer.name()}: added",
+            }
+        else:
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": f"Failed to add XYZ layer: {xyz_action['name']}",
+            }
 
     def createNewVectorLayer(self, new_vector_layer_action):
         layer = QgsVectorLayer(
             new_vector_layer_action["url"],
             new_vector_layer_action["name"],
-            new_vector_layer_action["provider"]
-            if "provider" in new_vector_layer_action
-            else "WFS",
+            new_vector_layer_action.get("provider", "WFS"),
         )
         if layer.isValid():
             QgsProject.instance().addMapLayer(layer)
+            return {
+                "status": KueResponseStatus.OK,
+                "message": f"{layer.name()}: added",
+            }
         else:
-            self.handleKueError(
-                f"Failed to add vector layer: {new_vector_layer_action['name']}"
-            )
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": f"Failed to add vector layer: {new_vector_layer_action['name']}",
+            }
 
     def addWMSLayer(self, wms_action):
         uri = f"url={wms_action['url']}"
         layer = QgsRasterLayer(uri, wms_action["name"], "wms")
         if layer.isValid():
             QgsProject.instance().addMapLayer(layer)
+            return {
+                "status": KueResponseStatus.OK,
+                "message": f"{layer.name()}: added",
+            }
+        else:
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": f"Failed to add WMS layer: {wms_action['name']}",
+            }
 
     def addArcGISFeatureServerLayer(self, arcgis_feature_server_action):
-        print("adding rest server")
         uri = QgsDataSourceUri()
         uri.setParam("crs", "EPSG:3857")
         uri.setParam("url", arcgis_feature_server_action["url"])
@@ -738,13 +974,15 @@ class KuePlugin:
         )
         if layer.isValid():
             QgsProject.instance().addMapLayer(layer)
+            return {
+                "status": KueResponseStatus.OK,
+                "message": f"{layer.name()}: added",
+            }
         else:
-            print("not valid")
-
-    def suggestPyQGISCode(self, code_action):
-        self.text_dock_widget.addMessage(
-            {"role": "assistant", "msg": code_action["code"], "has_button": True}
-        )
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": f"Failed to add ArcGIS feature server layer: {arcgis_feature_server_action['name']}",
+            }
 
     def addCloudVectorLayer(self, cloud_vector_action):
         layer = QgsVectorLayer(
@@ -752,6 +990,17 @@ class KuePlugin:
         )
         if layer.isValid():
             QgsProject.instance().addMapLayer(layer)
+
+            return {
+                "status": KueResponseStatus.OK,
+                "message": f"{layer.name()}: added",
+                "feature_count": layer.featureCount(),
+            }
+        else:
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": f"Failed to add cloud vector layer: {cloud_vector_action['name']}",
+            }
 
     def setLayerVisibility(self, visibility_action):
         if "layer_id" in visibility_action:
@@ -767,27 +1016,55 @@ class KuePlugin:
         if tree_layer:
             tree_layer.setItemVisibilityChecked(visibility_action["visible"])
             self.iface.mapCanvas().refresh()
+            return {
+                "status": KueResponseStatus.OK,
+                "message": f"{layer.name()}: set visibility",
+            }
+        else:
+            return {
+                "status": KueResponseStatus.ERROR,
+                "message": f"Kue could not find layer: {visibility_action['layer_name']}",
+            }
 
     def handleKueError(self, msg):
         self.text_dock_widget.addMessage(
             {"role": "error", "msg": msg, "has_button": False}
         )
 
-    def onEnterClicked(self, text: str, history: list[str]):
-        history_str = "\n".join(history)[-2048:]
-
+    def messageSent(self, text: str, addToSidebar: bool):
         kue_task = KueTask(
-            text, self.createKueContext(), history_str, self.plugin_version
+            text,
+            self.createKueContext(),
+            self.plugin_version,
+            self.chat_message_id,
         )
+
+        def setChatMessageID(chat_message_id: str):
+            print("setting chat message id", chat_message_id)
+            self.chat_message_id = chat_message_id
+
+        kue_task.chatMessageIdReceived.connect(setChatMessageID)
         kue_task.responseReceived.connect(self.handleKueResponse)
         kue_task.errorReceived.connect(self.handleKueError)
+
+        kue_task.streamingContentReceived.connect(
+            lambda chars: self.text_dock_widget.insertChars(chars)
+        )
+
+        kue_task.streamingActionReceived.connect(
+            lambda action: self.handleKueResponse(action)
+        )
+
         QgsApplication.taskManager().addTask(kue_task)
         self.task_trash.append(kue_task)
 
-        self.text_dock_widget.addMessage(
-            {"role": "user", "msg": text, "has_button": False}
-        )
-        # self.updateChatDisplay()
+        if addToSidebar:
+            self.text_dock_widget.addMessage(
+                {"role": "user", "msg": text, "has_button": False}
+            )
+
+        self.text_dock_widget.chat_display.append("")
+        self.text_dock_widget.chat_display.setAlignment(Qt.AlignLeft)
 
 
 def is_layer_visible(layer):

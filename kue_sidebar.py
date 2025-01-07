@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import (
     QTextEdit,
     QCheckBox,
 )
+from PyQt5.QtGui import QTextCursor, QFont
 from PyQt5.QtCore import Qt, QSettings, QTimer
 from qgis.core import QgsVectorLayer, QgsRasterLayer, QgsProject
 from qgis.core import QgsIconUtils
@@ -23,7 +24,11 @@ from typing import Callable
 import os
 import re
 from .kue_find import KueFind, VECTOR_EXTENSIONS, RASTER_EXTENSIONS
-from .kue_messages import KUE_FIND_FILTER_EXPLANATION
+from .kue_messages import (
+    KUE_FIND_FILTER_EXPLANATION,
+    KueResponseStatus,
+    status_to_color,
+)
 
 
 class KueSidebar(QDockWidget):
@@ -36,7 +41,7 @@ class KueSidebar(QDockWidget):
         ask_kue_message: str,
         lang: str,
     ):
-        super().__init__("Kue", iface.mainWindow())
+        super().__init__("Kue AI", iface.mainWindow())
 
         # Properties
         self.iface = iface
@@ -123,8 +128,9 @@ class KueSidebar(QDockWidget):
         # Build kue widget
         self.kue_widget = QWidget()
 
-        self.chat_display = QTextEdit()
-        self.chat_display.setReadOnly(True)
+        self.chat_display = TextEditWithButtons()
+        # self.chat_display.setReadOnly(True)
+        self.chat_display.sidebar_parent = self
         self.chat_display.setFrameShape(QFrame.NoFrame)
         self.chat_display.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
@@ -194,6 +200,30 @@ class KueSidebar(QDockWidget):
         else:
             self.parent_widget.setCurrentIndex(1)
 
+    def addAction(self, action):
+        if action.get("kue_action_svg"):
+            assert "message" in action
+
+            self.resetTextCursor()
+            cursor = self.chat_display.textCursor()
+            cursor.movePosition(cursor.Left, cursor.KeepAnchor)
+            cursor.movePosition(cursor.Left, cursor.KeepAnchor)
+            if cursor.selectedText() == "\u2029\u2029":
+                cursor.removeSelectedText()
+                self.resetTextCursor()
+                self.chat_display.append("")
+
+            self.chat_display.setAlignment(Qt.AlignLeft)
+            color = status_to_color(action["status"])
+            self.chat_display.insertHtml(f"""<div style="margin: 8px;">
+                    <img src="{action["kue_action_svg"]}" width="16" height="16" style="vertical-align: middle"/>
+                    <span style="color: {color};">{action["message"]}</span>
+                </div>""")
+            self.chat_display.append("")
+            self.chat_display.verticalScrollBar().setValue(
+                self.chat_display.verticalScrollBar().maximum()
+            )
+
     def addMessage(self, msg):
         # Super simple markdown formatting
         msg["msg"] = msg["msg"].replace("\n", "<br>")
@@ -227,9 +257,11 @@ class KueSidebar(QDockWidget):
             """
 
         # Append and scroll to bottom
+        self.resetTextCursor()
         cursor = self.chat_display.textCursor()
-        cursor.movePosition(cursor.End)
-        self.chat_display.setTextCursor(cursor)
+        cursor.movePosition(cursor.Left, cursor.KeepAnchor)
+        if cursor.selectedText() == "\u2029":
+            cursor.removeSelectedText()
 
         self.chat_display.append("")
         self.chat_display.setAlignment(
@@ -239,6 +271,44 @@ class KueSidebar(QDockWidget):
         self.chat_display.verticalScrollBar().setValue(
             self.chat_display.verticalScrollBar().maximum()
         )
+
+    def insertChars(self, chars):
+        self.chat_display.moveCursor(QTextCursor.End)
+        chars = chars.replace("\n\n", "\n")
+
+        while chars:
+            # Find first special marker (* or **)
+            marker_pos = min(
+                (chars.find(x) for x in ["*", "**"] if x in chars), default=-1
+            )
+
+            # Handle text before marker (or all text if no marker)
+            if marker_pos == -1:
+                self.chat_display.insertPlainText(chars)
+                break
+            elif marker_pos > 0:
+                self.chat_display.insertPlainText(chars[:marker_pos])
+                chars = chars[marker_pos:]
+                continue
+
+            # Handle formatting markers
+            if chars.startswith("**"):
+                ccf = self.chat_display.currentCharFormat()
+                ccf.setFontWeight(
+                    QFont.Bold if ccf.fontWeight() == QFont.Normal else QFont.Normal
+                )
+                self.chat_display.setCurrentCharFormat(ccf)
+                chars = chars[2:]
+            elif chars.startswith("*"):
+                ccf = self.chat_display.currentCharFormat()
+                ccf.setFontItalic(not ccf.fontItalic())
+                self.chat_display.setCurrentCharFormat(ccf)
+                chars = chars[1:]
+
+    def resetTextCursor(self):
+        cursor = self.chat_display.textCursor()
+        cursor.movePosition(cursor.End)
+        self.chat_display.setTextCursor(cursor)
 
     def onChatButtonClicked(self, msg):
         # Handle button click
@@ -251,17 +321,27 @@ class KueSidebar(QDockWidget):
         QApplication.clipboard().setText(msg["msg"])
         console._console.console.pasteEditor()
 
+    def appendHtmlToBottom(self, html, break_line=True):
+        # Append and scroll to bottom
+        cursor = self.chat_display.textCursor()
+        cursor.movePosition(cursor.End)
+        self.chat_display.setTextCursor(cursor)
+
+        if break_line:
+            self.chat_display.append("")
+        self.chat_display.insertHtml(html)
+        self.chat_display.verticalScrollBar().setValue(
+            self.chat_display.verticalScrollBar().maximum()
+        )
+
     def onEnterClicked(self):
         if self.textbox.text().startswith("/find"):
             return
         text = self.textbox.text()
-        # Extract just the message text from the HTML divs/spans
-        history = []
-        for line in self.chat_display.toPlainText().split("\n"):
-            line = line.strip()
-            if line and not line.startswith("<") and not line.endswith(">"):
-                history.append(line)
-        self.messageSent(text, history)
+        if text.strip() == "":
+            return
+
+        self.messageSent(text, True)
         self.textbox.clear()
 
     def openRasterFile(self, path: str):
@@ -426,3 +506,29 @@ class KueFileResult(QAbstractItemDelegate):
 
     def sizeHint(self, option, index):
         return QSize(option.rect.width(), 40)
+
+
+class TextEditWithButtons(QTextEdit):
+    def __init__(
+        self,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self.setReadOnly(True)
+        self.document().contentsChanged.connect(self.makeLinksClickable)
+        self.sidebar_parent = None
+
+    def makeLinksClickable(self):
+        cursor = self.textCursor()
+        format = cursor.charFormat()
+        format.setAnchor(True)
+        cursor.mergeCharFormat(format)
+
+    def mousePressEvent(self, event):
+        anchor = self.anchorAt(event.pos())
+        if anchor.startswith("callback:"):
+            callback_id = anchor[9:]  # Remove 'callback:' prefix
+            if callback_id in self.sidebar_parent.callbacks:
+                self.sidebar_parent.callbacks[callback_id]()
+                del self.sidebar_parent.callbacks[callback_id]
+        super().mousePressEvent(event)

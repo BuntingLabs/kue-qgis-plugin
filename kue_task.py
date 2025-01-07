@@ -8,18 +8,23 @@ from qgis.PyQt.QtNetwork import QNetworkRequest, QNetworkReply
 from qgis.PyQt.QtCore import QByteArray
 from qgis.core import QgsMessageLog, Qgis
 from PyQt5.QtGui import QDesktopServices
+import sip
 
 
 class KueTask(QgsTask):
     responseReceived = pyqtSignal(dict)
     errorReceived = pyqtSignal(str)
+    streamingContentReceived = pyqtSignal(str)
+    streamingActionReceived = pyqtSignal(dict)
+    chatMessageIdReceived = pyqtSignal(str)
 
-    def __init__(self, user_request, kue_context, history_str, kue_version):
+    def __init__(self, user_request, kue_context, kue_version, chat_message_id: str):
         super().__init__("Waiting for Kue to respond", QgsTask.CanCancel)
         self.user_request = user_request
         self.kue_context = kue_context
-        self.history_str = history_str
         self.kue_version = kue_version
+        self.chat_message_id = chat_message_id
+        self.has_sent_chat_message_id = False
 
     def run(self):
         try:
@@ -37,6 +42,10 @@ class KueTask(QgsTask):
                 .encode("utf-8"),
             )
             request.setRawHeader(b"x-kue-version", self.kue_version.encode("utf-8"))
+            if isinstance(self.chat_message_id, str):
+                request.setRawHeader(
+                    b"x-chat-session-id", self.chat_message_id.encode("utf-8")
+                )
 
             post_data = QByteArray()
             post_data.append(b"--boundary\r\n")
@@ -49,18 +58,22 @@ class KueTask(QgsTask):
             post_data.append(
                 b'Content-Disposition: form-data; name="chat_history"\r\n\r\n'
             )
-            post_data.append(self.history_str.encode("utf-8"))
+            post_data.append(json.dumps([]).encode("utf-8"))
             post_data.append(b"\r\n--boundary--\r\n")
 
             nam = QgsNetworkAccessManager.instance()
             reply = nam.post(request, post_data)
+
+            reply.readyRead.connect(lambda: self.handle_ready_read(reply))
 
             loop = QEventLoop()
             reply.finished.connect(loop.quit)
 
             # Create a QTimer to periodically check if the task is cancelled
             timer = QTimer()
-            timer.timeout.connect(lambda: self.isCanceled() and loop.quit())
+            timer.timeout.connect(
+                lambda: (not sip.isdeleted(self)) and self.isCanceled() and loop.quit()
+            )
             timer.start(100)  # Check every 100 milliseconds
 
             loop.exec_()
@@ -71,9 +84,6 @@ class KueTask(QgsTask):
                 return False
 
             if reply.error() == QNetworkReply.NoError:
-                content = reply.readAll().data().decode("utf-8")
-                data = json.loads(content)
-                self.responseReceived.emit(data)
                 return True
             elif reply.attribute(QNetworkRequest.HttpStatusCodeAttribute) == 402:
                 self.errorReceived.emit(
@@ -126,3 +136,26 @@ class KueTask(QgsTask):
 
     def cancel(self):
         super().cancel()
+
+    def handle_ready_read(self, reply):
+        if not self.has_sent_chat_message_id:
+            chat_message_id = reply.rawHeader(b"x-chat-session-id")
+            if chat_message_id:
+                self.chatMessageIdReceived.emit(bytes(chat_message_id).decode("utf-8"))
+                self.has_sent_chat_message_id = True
+
+        while reply.bytesAvailable():
+            chars = reply.readAll().data().decode("utf-8")
+
+            if chars[:11] == '{"actions":':
+                while True:
+                    try:
+                        self.streamingActionReceived.emit(json.loads(chars))
+                    except json.JSONDecodeError as e:
+                        self.streamingActionReceived.emit(json.loads(chars[: e.pos]))
+                        chars = chars[e.pos :]
+                        continue
+                    break
+                continue
+
+            self.streamingContentReceived.emit(chars)
