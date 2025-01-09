@@ -11,7 +11,6 @@ from PyQt5.QtWidgets import QAction, QDialog
 from PyQt5.QtGui import QIcon, QColor, QDesktopServices
 from PyQt5.QtCore import QSettings, Qt, QUrl, QVariant, QDate
 
-from qgis.gui import QgsVectorLayerSaveAsDialog
 from qgis.core import (
     QgsApplication,
     QgsVectorLayer,
@@ -394,6 +393,14 @@ class KuePlugin:
             self.iface.openAttributeTable(layer)
 
     def saveVectorLayerToFile(self, save_action):
+        try:
+            from qgis.gui import QgsVectorLayerSaveAsDialog
+        except ImportError:
+            self.handleKueError(
+                "Saving vector layers to file is not supported in QGIS versions prior to 3.30."
+            )
+            return
+
         layer = QgsProject.instance().mapLayer(save_action["layer_id"])
         if not layer or not isinstance(layer, QgsVectorLayer):
             self.handleKueError(f"Vector layer {save_action['layer_id']} not found")
