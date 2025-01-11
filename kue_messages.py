@@ -45,6 +45,30 @@ KUE_INTRODUCTION_MESSAGES = {
         "Jestem Kue, asystentem AI, który może czytać i edytować projekty QGIS.",
         "Jak mogę ci dziś pomóc?",
     ],
+    "nl": [
+        "Ik ben Kue, een AI-assistent die QGIS-projecten kan lezen en bewerken.",
+        "Hoe kan ik je vandaag helpen?",
+    ],
+    "sv": [
+        "Jag är Kue, en AI-assistent som kan läsa och redigera QGIS-projekt.",
+        "Hur kan jag hjälpa dig idag?",
+    ],
+    "da": [
+        "Jeg er Kue, en AI-assistent, der kan læse og redigere QGIS-projekter.",
+        "Hvordan kan jeg hjælpe dig i dag?",
+    ],
+    "cs": [
+        "Jsem Kue, AI asistent, který umí číst a upravovat projekty QGIS.",
+        "Jak vám mohu dnes pomoci?",
+    ],
+    "ro": [
+        "Sunt Kue, un asistent AI care poate citi și edita proiecte QGIS.",
+        "Cum vă pot ajuta astăzi?",
+    ],
+    "tr": [
+        "Ben Kue, QGIS projelerini okuyabilen ve düzenleyebilen bir AI asistanıyım.",
+        "Bugün size nasıl yardımcı olabilirim?",
+    ],
 }
 
 KUE_ASK_KUE = {
@@ -59,6 +83,12 @@ KUE_ASK_KUE = {
     "he": "...שאל את קיו",
     "lv": "Jautāt Kue...",
     "pl": "Zapytaj Kue...",
+    "nl": "Vraag Kue...",
+    "sv": "Fråga Kue...",
+    "da": "Spørg Kue...",
+    "cs": "Zeptejte se Kue...",
+    "ro": "Întreabă Kue...",
+    "tr": "Kue'ye sor...",
 }
 
 KUE_FIND_FILTER_EXPLANATION = {
@@ -73,4 +103,10 @@ KUE_FIND_FILTER_EXPLANATION = {
     "he": "סנן קבצים בקנבס המפה",
     "lv": "Filtrēt failus kartes kanvā",
     "pl": "Filtruj pliki na kanwie mapy",
+    "nl": "Bestanden filteren in kaartcanvas",
+    "sv": "Filtrera filer i kartfönstret",
+    "da": "Filtrer filer i kortlærredet",
+    "cs": "Filtrovat soubory v mapovém plátně",
+    "ro": "Filtrează fișierele în canvas-ul hărții",
+    "tr": "Harita tuvalinde dosyaları filtrele",
 }
