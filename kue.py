@@ -219,6 +219,9 @@ class KuePlugin:
                     "layer_name": layer.name(),
                     "visible": is_layer_visible(layer),
                     "crs": layer.crs().authid(),
+                    "provider_type": layer.providerType(),
+                    "source": layer.source() if layer.providerType() == "wms" else None,
+                    "bands": layer.bandCount(),
                 }
                 for layer in raster_layers
             ],
