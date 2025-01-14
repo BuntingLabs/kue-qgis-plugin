@@ -134,3 +134,23 @@ KUE_FIND_FILTER_EXPLANATION = {
     "ro": "Filtrează fișierele în canvas-ul hărții",
     "tr": "Harita tuvalinde dosyaları filtrele",
 }
+
+KUE_CLEAR_CHAT = {
+    "en": "Clear chat",
+    "pt": "Limpar conversa",
+    "fr": "Effacer la conversation",
+    "de": "Chat löschen",
+    "es": "Borrar chat",
+    "it": "Cancella chat",
+    "hi": "चैट साफ़ करें",
+    "bn": "চ্যাট মুছুন",
+    "he": "נקה צ'אט",
+    "lv": "Notīrīt tērzēšanu",
+    "pl": "Wyczyść czat",
+    "nl": "Chat wissen",
+    "sv": "Rensa chatten",
+    "da": "Ryd chat",
+    "cs": "Vymazat chat",
+    "ro": "Șterge conversația",
+    "tr": "Sohbeti temizle",
+}

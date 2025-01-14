@@ -14,6 +14,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QTextEdit,
     QCheckBox,
+    QToolButton,
 )
 from PyQt5.QtGui import QTextCursor, QFont
 from PyQt5.QtCore import Qt, QSettings, QTimer
@@ -26,6 +27,7 @@ import re
 from .kue_find import KueFind, VECTOR_EXTENSIONS, RASTER_EXTENSIONS
 from .kue_messages import (
     KUE_FIND_FILTER_EXPLANATION,
+    KUE_CLEAR_CHAT,
     KueResponseStatus,
     status_to_color,
 )
@@ -40,6 +42,8 @@ class KueSidebar(QDockWidget):
         kue_find: KueFind,
         ask_kue_message: str,
         lang: str,
+        setChatMessageID: Callable,
+        starter_messages: list[str],
     ):
         super().__init__("Kue AI", iface.mainWindow())
 
@@ -49,6 +53,8 @@ class KueSidebar(QDockWidget):
         self.authenticateUser = authenticateUser
         self.kue_find = kue_find
         self.lang = lang
+        self.setChatMessageID = setChatMessageID
+        self.starter_messages = starter_messages
         # The parent widget is either kue or auth
         self.parent_widget = QStackedWidget()
 
@@ -97,18 +103,18 @@ class KueSidebar(QDockWidget):
         # 1. Build the textbox and enter button widget
         self.message_bar_widget = QWidget()
 
-        self.textbox = QLineEdit()
+        self.textbox = QTextEdit()
+        self.textbox.setFixedHeight(50)
         self.textbox.setPlaceholderText(ask_kue_message)
-        self.textbox.returnPressed.connect(self.onEnterClicked)
-        self.textbox.textChanged.connect(self.onTextUpdate)
+        self.textbox.textChanged.connect(
+            lambda: self.onTextUpdate(self.textbox.toPlainText())
+        )
 
         def handleKeyPress(e):
-            if e.key() == Qt.Key_Up:
-                user_messages = [msg for msg in [] if msg["role"] == "user"]
-                if user_messages:
-                    self.textbox.setText(user_messages[-1]["msg"])
+            if e.key() == Qt.Key_Return:
+                self.onEnterClicked()
             else:
-                QLineEdit.keyPressEvent(self.textbox, e)
+                QTextEdit.keyPressEvent(self.textbox, e)
 
         self.textbox.keyPressEvent = handleKeyPress
 
@@ -172,15 +178,54 @@ class KueSidebar(QDockWidget):
         self.above_mb_widget.setCurrentIndex(0)
 
         # Create a layout for kue (kue chat + find)
-        self.kue_layout = QVBoxLayout()
-        self.kue_layout.addWidget(self.above_mb_widget)
-        self.kue_layout.addWidget(self.message_bar_widget)
+        self.chat_layout = QVBoxLayout()
+
+        self.chat_layout.addWidget(self.above_mb_widget, 1)
+        self.chat_layout.addWidget(self.message_bar_widget, 0)
 
         # Add message bar widget to parent widget
         self.kue_widget = QWidget()
-        self.kue_widget.setLayout(self.kue_layout)
+        self.kue_widget.setLayout(self.chat_layout)
         self.parent_widget.addWidget(self.kue_widget)
         self.parent_widget.addWidget(self.auth_widget)
+
+        title_widget = QWidget()
+        title_layout = QHBoxLayout(title_widget)
+        title_layout.setContentsMargins(8, 0, 8, 0)
+
+        title_label = QLabel("Kue AI")
+
+        self.reset_chat_btn = QPushButton(
+            KUE_CLEAR_CHAT.get(lang, KUE_CLEAR_CHAT["en"])
+        )
+        self.reset_chat_btn.clicked.connect(self.reset)
+        self.reset_chat_btn.setFixedWidth(80)
+        self.reset_chat_btn.setToolTip("Creates a new conversation")
+
+        # Standard controls
+
+        self.float_button = QToolButton(self)
+        float_icon = self.style().standardIcon(QStyle.SP_TitleBarNormalButton)
+        self.float_button.setIcon(float_icon)
+        self.float_button.clicked.connect(
+            lambda: self.setFloating(not self.isFloating())
+        )
+        self.float_button.setToolTip("Detach chat window")
+
+        self.close_button = QToolButton(self)
+        close_icon = self.style().standardIcon(QStyle.SP_TitleBarCloseButton)
+        self.close_button.setIcon(close_icon)
+        self.close_button.clicked.connect(self.close)
+        self.close_button.setToolTip("Close chat window")
+
+        title_layout.addWidget(title_label)
+        title_layout.addStretch()
+        title_layout.addWidget(self.reset_chat_btn)
+        # standard
+        title_layout.addWidget(self.float_button)
+        title_layout.addWidget(self.close_button)
+
+        self.setTitleBarWidget(title_widget)
 
         self.parent_widget.setCurrentIndex(
             0 if QSettings().value("buntinglabs-kue/auth_token") else 1
@@ -192,6 +237,9 @@ class KueSidebar(QDockWidget):
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self.checkAuthToken)
         self.poll_timer.start(5000)  # 5 seconds
+
+        for msg in self.starter_messages:
+            self.addMessage({"role": "assistant", "msg": msg})
 
     def checkAuthToken(self):
         # Check if the auth token is set and update the widget index accordingly
@@ -335,14 +383,22 @@ class KueSidebar(QDockWidget):
         )
 
     def onEnterClicked(self):
-        if self.textbox.text().startswith("/find"):
+        if self.textbox.toPlainText().startswith("/find"):
             return
-        text = self.textbox.text()
+        text = self.textbox.toPlainText()
         if text.strip() == "":
             return
 
         self.messageSent(text, True)
         self.textbox.clear()
+
+    def reset(self):
+        self.chat_display.clear()
+        self.above_mb_widget.setCurrentIndex(0)
+        self.setChatMessageID(None)
+
+        for msg in self.starter_messages:
+            self.addMessage({"role": "assistant", "msg": msg})
 
     def openRasterFile(self, path: str):
         rlayer = QgsRasterLayer(path, os.path.basename(path))
@@ -396,9 +452,9 @@ class KueSidebar(QDockWidget):
             self.isVisible()
             and self.above_mb_widget.currentIndex() == 1
             # and self.map_canvas_filter.isChecked()
-            and self.textbox.text().startswith("/find")
+            and self.textbox.toPlainText().startswith("/find")
         ):
-            self.onTextUpdate(self.textbox.text())
+            self.onTextUpdate(self.textbox.toPlainText())
 
 
 from PyQt5.QtWidgets import QAbstractItemDelegate

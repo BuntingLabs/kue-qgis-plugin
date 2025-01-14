@@ -111,10 +111,9 @@ class KuePlugin:
             self.kue_find,
             self.ask_kue_message,
             self.lang,
+            self.setChatMessageID,
+            self.starter_messages,
         )
-
-        for msg in self.starter_messages:
-            self.text_dock_widget.addMessage({"role": "assistant", "msg": msg})
 
     def unload(self):
         self.iface.removeToolBarIcon(self.kue_action)
@@ -1031,6 +1030,9 @@ class KuePlugin:
             {"role": "error", "msg": msg, "has_button": False}
         )
 
+    def setChatMessageID(self, chat_message_id: str):
+        self.chat_message_id = chat_message_id
+
     def messageSent(self, text: str, addToSidebar: bool):
         kue_task = KueTask(
             text,
@@ -1039,11 +1041,7 @@ class KuePlugin:
             self.chat_message_id,
         )
 
-        def setChatMessageID(chat_message_id: str):
-            print("setting chat message id", chat_message_id)
-            self.chat_message_id = chat_message_id
-
-        kue_task.chatMessageIdReceived.connect(setChatMessageID)
+        kue_task.chatMessageIdReceived.connect(self.setChatMessageID)
         kue_task.responseReceived.connect(self.handleKueResponse)
         kue_task.errorReceived.connect(self.handleKueError)
 
