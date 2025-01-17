@@ -105,6 +105,7 @@ class KueSidebar(QDockWidget):
 
         self.textbox = QTextEdit()
         self.textbox.setFixedHeight(50)
+        self.textbox.setAcceptRichText(False)
         self.textbox.setPlaceholderText(ask_kue_message)
         self.textbox.textChanged.connect(
             lambda: self.onTextUpdate(self.textbox.toPlainText())
