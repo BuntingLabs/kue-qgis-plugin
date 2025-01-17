@@ -255,12 +255,14 @@ class KueSidebar(QDockWidget):
 
             self.resetTextCursor()
             cursor = self.chat_display.textCursor()
-            cursor.movePosition(cursor.Left, cursor.KeepAnchor)
-            cursor.movePosition(cursor.Left, cursor.KeepAnchor)
-            if cursor.selectedText() == "\u2029\u2029":
+            while True:
+                cursor.movePosition(cursor.Left, cursor.KeepAnchor)
+                if cursor.selectedText() != "\u2029":
+                    cursor.movePosition(cursor.Right)
+                    break
                 cursor.removeSelectedText()
-                self.resetTextCursor()
-                self.chat_display.append("")
+            self.resetTextCursor()
+            self.chat_display.append("")
 
             self.chat_display.setAlignment(Qt.AlignLeft)
             color = status_to_color(action["status"])
