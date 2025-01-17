@@ -25,6 +25,7 @@ class KueTask(QgsTask):
         self.kue_version = kue_version
         self.chat_message_id = chat_message_id
         self.has_sent_chat_message_id = False
+        self._read_buffer = ""
 
     def run(self):
         try:
@@ -144,18 +145,27 @@ class KueTask(QgsTask):
                 self.chatMessageIdReceived.emit(bytes(chat_message_id).decode("utf-8"))
                 self.has_sent_chat_message_id = True
 
-        while reply.bytesAvailable():
-            chars = reply.readAll().data().decode("utf-8")
+        self._read_buffer += reply.readAll().data().decode("utf-8", errors="replace")
 
-            if chars[:11] == '{"actions":':
-                while True:
-                    try:
-                        self.streamingActionReceived.emit(json.loads(chars))
-                    except json.JSONDecodeError as e:
-                        self.streamingActionReceived.emit(json.loads(chars[: e.pos]))
-                        chars = chars[e.pos :]
-                        continue
-                    break
-                continue
+        while True:
+            idx = self._read_buffer.find('{"actions":')
+            if idx == -1:
+                if self._read_buffer:
+                    self.streamingContentReceived.emit(self._read_buffer)
+                    self._read_buffer = ""
+                break
+            if idx > 0:
+                text_chunk = self._read_buffer[:idx]
+                self.streamingContentReceived.emit(text_chunk)
+                self._read_buffer = self._read_buffer[idx:]
 
-            self.streamingContentReceived.emit(chars)
+            try:
+                parsed_obj, next_index = json.JSONDecoder().raw_decode(
+                    self._read_buffer
+                )
+            except json.JSONDecodeError:
+                break
+            else:
+                self._read_buffer = self._read_buffer[next_index:]
+
+                self.streamingActionReceived.emit(parsed_obj)
