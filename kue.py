@@ -114,6 +114,7 @@ class KuePlugin:
             self.setChatMessageID,
             self.starter_messages,
         )
+        self.text_dock_widget.hide()
 
     def unload(self):
         self.iface.removeToolBarIcon(self.kue_action)
