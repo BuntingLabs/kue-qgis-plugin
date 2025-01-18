@@ -10,3 +10,4 @@ repository=https://github.com/BuntingLabs/kue-qgis-plugin
 tracker=https://github.com/BuntingLabs/kue-qgis-plugin/issues
 homepage=https://buntinglabs.com/solutions/kue-ai
 tags=ai,symbology,edit,vector,style,basemap,label,analysis,processing,search,data
+icon=icon.png
