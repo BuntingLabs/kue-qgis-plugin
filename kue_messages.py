@@ -93,6 +93,26 @@ KUE_INTRODUCTION_MESSAGES = {
         "Ben Kue, QGIS projelerini okuyabilen ve düzenleyebilen bir AI asistanıyım.",
         "Bugün size nasıl yardımcı olabilirim?",
     ],
+    "hr": [
+        "Ja sam Kue, AI asistent koji može čitati i uređivati QGIS projekte.",
+        "Kako vam mogu pomoći danas?",
+    ],
+    "uk": [
+        "Я Кю, AI-асистент, який може читати та редагувати проекти QGIS.",
+        "Як я можу вам допомогти сьогодні?",
+    ],
+    "ru": [
+        "Я Кю, AI-ассистент, который может читать и редактировать проекты QGIS.",
+        "Как я могу помочь вам сегодня?",
+    ],
+    "zh": [
+        "我是Kue，一个可以读取和编辑QGIS项目的AI助手。",
+        "今天我能帮您什么？",
+    ],
+    "ja": [
+        "私はKueです。QGISプロジェクトを読み取り、編集できるAIアシスタントです。",
+        "今日はどのようにお手伝いできますか？",
+    ],
 }
 
 KUE_ASK_KUE = {
@@ -113,6 +133,11 @@ KUE_ASK_KUE = {
     "cs": "Zeptejte se Kue...",
     "ro": "Întreabă Kue...",
     "tr": "Kue'ye sor...",
+    "hr": "Pitaj Kue...",
+    "uk": "Запитайте Kue...",
+    "ru": "Спросите Kue...",
+    "zh": "询问Kue...",
+    "ja": "Kueに聞く...",
 }
 
 KUE_FIND_FILTER_EXPLANATION = {
@@ -133,6 +158,11 @@ KUE_FIND_FILTER_EXPLANATION = {
     "cs": "Filtrovat soubory v mapovém plátně",
     "ro": "Filtrează fișierele în canvas-ul hărții",
     "tr": "Harita tuvalinde dosyaları filtrele",
+    "hr": "Filtriraj datoteke u platnu karte",
+    "uk": "Фільтрувати файли на полотні карти",
+    "ru": "Фильтровать файлы на холсте карты",
+    "zh": "在地图画布中过滤文件",
+    "ja": "マップキャンバスでファイルをフィルタリング",
 }
 
 KUE_CLEAR_CHAT = {
@@ -153,4 +183,84 @@ KUE_CLEAR_CHAT = {
     "cs": "Vymazat chat",
     "ro": "Șterge conversația",
     "tr": "Sohbeti temizle",
+    "hr": "Očisti chat",
+    "uk": "Очистити чат",
+    "ru": "Очистить чат",
+    "zh": "清除聊天",
+    "ja": "チャットをクリア",
+}
+
+KUE_DESCRIPTION = {
+    "en": "Kue is an embedded AI assistant inside QGIS. It can read and edit your project, using cloud AI services to do so (LLMs).",
+    "pt": "Kue é um assistente de IA embutido no QGIS. Ele pode ler e editar seu projeto, usando serviços de IA em nuvem para isso (LLMs).",
+    "fr": "Kue est un assistant IA intégré dans QGIS. Il peut lire et éditer votre projet en utilisant des services d'IA en nuage (LLMs).",
+    "de": "Kue ist ein eingebetteter KI-Assistent in QGIS. Er kann Ihr Projekt lesen und bearbeiten, indem er Cloud-KI-Dienste nutzt (LLMs).",
+    "es": "Kue es un asistente de IA integrado en QGIS. Puede leer y editar su proyecto utilizando servicios de IA en la nube (LLMs).",
+    "it": "Kue è un assistente AI integrato in QGIS. Può leggere e modificare il tuo progetto utilizzando servizi di IA cloud (LLMs).",
+    "hi": "Kue QGIS के अंदर एक एम्बेडेड AI सहायक है। यह आपके प्रोजेक्ट को पढ़ और संपादित कर सकता है, इसके लिए क्लाउड AI सेवाओं का उपयोग करता है (LLMs)।",
+    "bn": "Kue হল QGIS এর ভিতরে এম্বেড করা একটি AI সহকারী। এটি আপনার প্রকল্প পড়তে এবং সম্পাদনা করতে পারে, এটি করার জন্য ক্লাউড AI পরিষেবাগুলি ব্যবহার করে (LLMs)।",
+    "he": "Kue הוא עוזר AI משובץ בתוך QGIS. הוא יכול לקרוא ולערוך את הפרויקט שלך, תוך שימוש בשירותי AI בענן לשם כך (LLMs).",
+    "lv": "Kue ir iegults AI asistents QGIS iekšienē. Tas var lasīt un rediģēt jūsu projektu, izmantojot mākoņa AI pakalpojumus (LLMs).",
+    "pl": "Kue to wbudowany asystent AI w QGIS. Może czytać i edytować Twój projekt, korzystając z usług AI w chmurze (LLMs).",
+    "nl": "Kue is een ingebouwde AI-assistent in QGIS. Het kan uw project lezen en bewerken met behulp van cloud-AI-diensten (LLMs).",
+    "sv": "Kue är en inbäddad AI-assistent i QGIS. Den kan läsa och redigera ditt projekt med hjälp av moln-AI-tjänster (LLMs).",
+    "da": "Kue er en indlejret AI-assistent i QGIS. Den kan læse og redigere dit projekt ved hjælp af cloud-AI-tjenester (LLMs).",
+    "cs": "Kue je vestavěný AI asistent v QGIS. Může číst a upravovat váš projekt pomocí cloudových AI služeb (LLMs).",
+    "ro": "Kue este un asistent AI integrat în QGIS. Poate citi și edita proiectul dvs. folosind servicii AI în cloud (LLMs).",
+    "tr": "Kue, QGIS içinde gömülü bir AI asistanıdır. Projenizi okuyabilir ve düzenleyebilir, bunu yapmak için bulut AI hizmetlerini kullanır (LLMs).",
+    "hr": "Kue je ugrađeni AI asistent unutar QGIS-a. Može čitati i uređivati vaš projekt koristeći usluge AI u oblaku (LLMs).",
+    "uk": "Kue — це вбудований AI-асистент у QGIS. Він може читати та редагувати ваш проект, використовуючи хмарні AI-сервіси (LLMs).",
+    "ru": "Kue — это встроенный AI-ассистент в QGIS. Он может читать и редактировать ваш проект, используя облачные AI-сервисы (LLMs).",
+    "zh": "Kue 是 QGIS 中的嵌入式 AI 助手。它可以读取和编辑您的项目，使用云 AI 服务来实现 (LLMs)。",
+    "ja": "Kue は QGIS 内の埋め込み型 AI アシスタントです。クラウド AI サービスを使用してプロジェクトを読み取り、編集できます (LLMs)。",
+}
+
+KUE_SUBSCRIPTION = {
+    "en": "Using Kue requires a subscription of $19/month (first month free). This allows us to build useful AI tools.",
+    "pt": "Usar o Kue requer uma assinatura de $19/mês (primeiro mês grátis). Isso nos permite construir ferramentas de IA úteis.",
+    "fr": "L'utilisation de Kue nécessite un abonnement de 19 $/mois (premier mois gratuit). Cela nous permet de créer des outils d'IA utiles.",
+    "de": "Die Nutzung von Kue erfordert ein Abonnement von 19 $/Monat (erster Monat kostenlos). Dies ermöglicht es uns, nützliche KI-Tools zu entwickeln.",
+    "es": "Usar Kue requiere una suscripción de $19/mes (primer mes gratis). Esto nos permite construir herramientas de IA útiles.",
+    "it": "L'utilizzo di Kue richiede un abbonamento di $19/mese (primo mese gratuito). Questo ci consente di creare strumenti di IA utili.",
+    "hi": "Kue का उपयोग करने के लिए $19/माह की सदस्यता की आवश्यकता होती है (पहला महीना मुफ्त)। यह हमें उपयोगी AI उपकरण बनाने की अनुमति देता है।",
+    "bn": "Kue ব্যবহার করতে $19/মাস সাবস্ক্রিপশন প্রয়োজন (প্রথম মাস বিনামূল্যে)। এটি আমাদেরকে দরকারী AI সরঞ্জাম তৈরি করতে সক্ষম করে।",
+    "he": "שימוש ב-Kue דורש מנוי של $19 לחודש (החודש הראשון חינם). זה מאפשר לנו לבנות כלים שימושיים של AI.",
+    "lv": "Kue lietošanai nepieciešams abonements par $19/mēnesī (pirmais mēnesis bez maksas). Tas ļauj mums izveidot noderīgus AI rīkus.",
+    "pl": "Korzystanie z Kue wymaga subskrypcji w wysokości 19 $/miesiąc (pierwszy miesiąc za darmo). To pozwala nam tworzyć przydatne narzędzia AI.",
+    "nl": "Het gebruik van Kue vereist een abonnement van $19/maand (eerste maand gratis). Dit stelt ons in staat om nuttige AI-tools te bouwen.",
+    "sv": "Att använda Kue kräver en prenumeration på $19/månad (första månaden gratis). Detta gör att vi kan bygga användbara AI-verktyg.",
+    "da": "Brug af Kue kræver et abonnement på $19/måned (første måned gratis). Dette giver os mulighed for at bygge nyttige AI-værktøjer.",
+    "cs": "Používání Kue vyžaduje předplatné 19 $/měsíc (první měsíc zdarma). To nám umožňuje vytvářet užitečné nástroje AI.",
+    "ro": "Utilizarea Kue necesită un abonament de 19 $/lună (prima lună gratuită). Acest lucru ne permite să construim instrumente AI utile.",
+    "tr": "Kue kullanmak, $19/ay abonelik gerektirir (ilk ay ücretsiz). Bu, faydalı AI araçları geliştirmemizi sağlar.",
+    "hr": "Korištenje Kue zahtijeva pretplatu od 19 $/mjesec (prvi mjesec besplatno). To nam omogućuje izradu korisnih AI alata.",
+    "uk": "Використання Kue вимагає підписки $19/місяць (перший місяць безкоштовно). Це дозволяє нам створювати корисні AI інструменти.",
+    "ru": "Использование Kue требует подписки $19/месяц (первый месяц бесплатно). Это позволяет нам создавать полезные AI инструменты.",
+    "zh": "使用 Kue 需要每月 $19 的订阅（第一个月免费）。这使我们能够构建有用的 AI 工具。",
+    "ja": "Kue の使用には月額 $19 のサブスクリプションが必要です（初月無料）。これにより、便利な AI ツールを構築できます。",
+}
+
+KUE_LOGIN_BUTTON = {
+    "en": "Log In",
+    "pt": "Entrar",
+    "fr": "Se connecter",
+    "de": "Einloggen",
+    "es": "Iniciar sesión",
+    "it": "Accedi",
+    "hi": "लॉग इन करें",
+    "bn": "লগ ইন করুন",
+    "he": "התחבר",
+    "lv": "Pieslēgties",
+    "pl": "Zaloguj się",
+    "nl": "Inloggen",
+    "sv": "Logga in",
+    "da": "Log ind",
+    "cs": "Přihlásit se",
+    "ro": "Conectează-te",
+    "tr": "Giriş yap",
+    "hr": "Prijavi se",
+    "uk": "Увійти",
+    "ru": "Войти",
+    "zh": "登录",
+    "ja": "ログイン",
 }

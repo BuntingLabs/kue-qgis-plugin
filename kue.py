@@ -86,8 +86,9 @@ class KuePlugin:
         self.text_dock_widget = None
 
         # Load the greeting message
-        locale = QSettings().value("locale/userLocale", "en_US")
-        self.lang = locale[2:] if isinstance(locale, str) and len(locale) > 2 else "en"
+        locale = QSettings().value("locale/userLocale", QgsApplication.locale())
+        self.lang = locale[:2] if isinstance(locale, str) and len(locale) >= 2 else "en"
+
         self.starter_messages = KUE_INTRODUCTION_MESSAGES.get(
             self.lang, KUE_INTRODUCTION_MESSAGES["en"]
         )

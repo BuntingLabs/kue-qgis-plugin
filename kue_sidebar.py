@@ -28,6 +28,9 @@ from .kue_find import KueFind, VECTOR_EXTENSIONS, RASTER_EXTENSIONS
 from .kue_messages import (
     KUE_FIND_FILTER_EXPLANATION,
     KUE_CLEAR_CHAT,
+    KUE_DESCRIPTION,
+    KUE_SUBSCRIPTION,
+    KUE_LOGIN_BUTTON,
     KueResponseStatus,
     status_to_color,
 )
@@ -73,21 +76,17 @@ class KueSidebar(QDockWidget):
         title = QLabel("<h2>Kue</h2>")
         title.setContentsMargins(0, 0, 0, 10)
 
-        description = QLabel(
-            "Kue is an embedded AI assistant inside QGIS. It can read and edit your project, using cloud AI services to do so (LLMs)."
-        )
+        description = QLabel(KUE_DESCRIPTION.get(lang, KUE_DESCRIPTION["en"]))
         description.setWordWrap(True)
         description.setContentsMargins(0, 0, 0, 10)
         description.setMinimumWidth(300)
 
-        pricing = QLabel(
-            "Using Kue requires a subscription of $19/month (first month free). This allows us to build useful AI tools."
-        )
+        pricing = QLabel(KUE_SUBSCRIPTION.get(lang, KUE_SUBSCRIPTION["en"]))
         pricing.setWordWrap(True)
         pricing.setContentsMargins(0, 0, 0, 10)
         pricing.setMinimumWidth(300)
 
-        login_button = QPushButton("Log In")
+        login_button = QPushButton(KUE_LOGIN_BUTTON.get(lang, KUE_LOGIN_BUTTON["en"]))
         login_button.setFixedWidth(280)
         login_button.setStyleSheet(
             "QPushButton { background-color: #0d6efd; color: white; border: none; padding: 8px; border-radius: 4px; } QPushButton:hover { background-color: #0b5ed7; }"
