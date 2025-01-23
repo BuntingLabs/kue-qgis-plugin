@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QDockWidget,
     QStackedWidget,
     QWidget,
-    QLineEdit,
+    QApplication,
     QPushButton,
     QHBoxLayout,
     QVBoxLayout,
@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (
     QCheckBox,
     QToolButton,
 )
-from PyQt5.QtGui import QTextCursor, QFont
+from PyQt5.QtGui import QTextCursor, QFont, QColor, QDesktopServices
 from PyQt5.QtCore import Qt, QSettings, QTimer
 from qgis.core import QgsVectorLayer, QgsRasterLayer, QgsProject
 from qgis.core import QgsIconUtils
@@ -322,27 +322,58 @@ class KueSidebar(QDockWidget):
             self.chat_display.verticalScrollBar().maximum()
         )
 
-    def insertChars(self, chars):
+    def insertChars(self, chars, start_color=None):
         self.chat_display.moveCursor(QTextCursor.End)
+        if start_color:
+            ccf = self.chat_display.currentCharFormat()
+            ccf.setForeground(start_color)
+            self.chat_display.setCurrentCharFormat(ccf)
         chars = chars.replace("\n\n", "\n")
-
         while chars:
-            # Find first special marker (* or **)
+            # Find first special marker (*, ** or markdown link)
+            link_match = re.search(r"\[(.*?)\]\((.*?)\)", chars)
+            link_pos = link_match.start() if link_match else -1
             marker_pos = min(
                 (chars.find(x) for x in ["*", "**"] if x in chars), default=-1
             )
 
-            # Handle text before marker (or all text if no marker)
-            if marker_pos == -1:
+            # Handle text before any markers
+            first_marker = (
+                min(p for p in [marker_pos, link_pos] if p != -1)
+                if marker_pos != -1 or link_pos != -1
+                else -1
+            )
+            if first_marker == -1:
                 self.chat_display.insertPlainText(chars)
                 break
-            elif marker_pos > 0:
-                self.chat_display.insertPlainText(chars[:marker_pos])
-                chars = chars[marker_pos:]
+            elif first_marker > 0:
+                self.chat_display.insertPlainText(chars[:first_marker])
+                chars = chars[first_marker:]
                 continue
 
+            # Handle markdown link
+            if link_match and link_pos == 0:
+                text, url = link_match.groups()
+                # Set link blue, underlined, then revert back to original color
+                ccf = self.chat_display.currentCharFormat()
+                current_foreground = ccf.foreground().color()
+                ccf.setForeground(QColor("blue"))
+                ccf.setAnchor(True)
+                ccf.setAnchorHref(url)
+                ccf.setToolTip(url)
+                ccf.setFontUnderline(True)
+                self.chat_display.setCurrentCharFormat(ccf)
+                self.chat_display.insertPlainText(text)
+                ccf = self.chat_display.currentCharFormat()
+                ccf.setForeground(current_foreground)
+                ccf.setAnchor(False)
+                ccf.setAnchorHref("")
+                ccf.setToolTip("")
+                ccf.setFontUnderline(False)
+                self.chat_display.setCurrentCharFormat(ccf)
+                chars = chars[link_match.end() :]
             # Handle formatting markers
-            if chars.startswith("**"):
+            elif chars.startswith("**"):
                 ccf = self.chat_display.currentCharFormat()
                 ccf.setFontWeight(
                     QFont.Bold if ccf.fontWeight() == QFont.Normal else QFont.Normal
@@ -573,20 +604,17 @@ class TextEditWithButtons(QTextEdit):
     ):
         super().__init__(parent)
         self.setReadOnly(True)
-        self.document().contentsChanged.connect(self.makeLinksClickable)
-        self.sidebar_parent = None
+        self.anchor = None
 
-    def makeLinksClickable(self):
-        cursor = self.textCursor()
-        format = cursor.charFormat()
-        format.setAnchor(True)
-        cursor.mergeCharFormat(format)
+    def mousePressEvent(self, e):
+        self.anchor = self.anchorAt(e.pos())
+        if self.anchor:
+            QApplication.setOverrideCursor(Qt.PointingHandCursor)
+        super().mousePressEvent(e)
 
-    def mousePressEvent(self, event):
-        anchor = self.anchorAt(event.pos())
-        if anchor.startswith("callback:"):
-            callback_id = anchor[9:]  # Remove 'callback:' prefix
-            if callback_id in self.sidebar_parent.callbacks:
-                self.sidebar_parent.callbacks[callback_id]()
-                del self.sidebar_parent.callbacks[callback_id]
-        super().mousePressEvent(event)
+    def mouseReleaseEvent(self, e):
+        if self.anchor:
+            QDesktopServices.openUrl(QUrl(self.anchor))
+            QApplication.setOverrideCursor(Qt.ArrowCursor)
+            self.anchor = None
+        super().mouseReleaseEvent(e)
