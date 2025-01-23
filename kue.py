@@ -1041,6 +1041,7 @@ class KuePlugin:
             self.createKueContext(),
             self.plugin_version,
             self.chat_message_id,
+            self.lang,
         )
 
         kue_task.chatMessageIdReceived.connect(self.setChatMessageID)

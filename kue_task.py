@@ -18,13 +18,16 @@ class KueTask(QgsTask):
     streamingActionReceived = pyqtSignal(dict)
     chatMessageIdReceived = pyqtSignal(str)
 
-    def __init__(self, user_request, kue_context, kue_version, chat_message_id: str):
+    def __init__(
+        self, user_request, kue_context, kue_version, chat_message_id: str, locale: str
+    ):
         super().__init__("Waiting for Kue to respond", QgsTask.CanCancel)
         self.user_request = user_request
         self.kue_context = kue_context
         self.kue_version = kue_version
         self.chat_message_id = chat_message_id
         self.has_sent_chat_message_id = False
+        self.locale = locale
         self._read_buffer = ""
 
     def run(self):
@@ -47,6 +50,8 @@ class KueTask(QgsTask):
                 request.setRawHeader(
                     b"x-chat-session-id", self.chat_message_id.encode("utf-8")
                 )
+            if isinstance(self.locale, str) and len(self.locale) == 2:
+                request.setRawHeader(b"Accept-Language", self.locale.encode("utf-8"))
 
             post_data = QByteArray()
             post_data.append(b"--boundary\r\n")
