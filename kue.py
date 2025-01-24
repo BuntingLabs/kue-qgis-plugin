@@ -108,12 +108,13 @@ class KuePlugin:
         self.text_dock_widget = KueSidebar(
             self.iface,
             self.messageSent,
-            self.authenticateUser,
+            lambda: self.authenticateUser(False),
             self.kue_find,
             self.ask_kue_message,
             self.lang,
             self.setChatMessageID,
             self.starter_messages,
+            lambda: self.authenticateUser(True),
         )
         self.text_dock_widget.hide()
 
@@ -141,13 +142,14 @@ class KuePlugin:
     # ================================================
     # Authentication
     # ================================================
-
-    def authenticateUser(self):
+    def authenticateUser(self, create_new_user: bool = True):
         alphabet = string.ascii_letters + string.digits
         key = "".join(secrets.choice(alphabet) for _ in range(64))
 
         QDesktopServices.openUrl(
-            QUrl(f"https://buntinglabs.com/account/register?kue_token={key}")
+            QUrl(
+                f"https://buntinglabs.com/account/register?kue_token={key}&create_new_user={create_new_user}"
+            )
         )
         QSettings().setValue("buntinglabs-kue/auth_token", key)
 

@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import (
     QTextEdit,
     QCheckBox,
     QToolButton,
+    QStyle,
 )
 from PyQt5.QtGui import QTextCursor, QFont, QColor, QDesktopServices
 from PyQt5.QtCore import Qt, QSettings, QTimer
@@ -31,6 +32,7 @@ from .kue_messages import (
     KUE_DESCRIPTION,
     KUE_SUBSCRIPTION,
     KUE_LOGIN_BUTTON,
+    KUE_START_BUTTON,
     KueResponseStatus,
     status_to_color,
 )
@@ -47,6 +49,7 @@ class KueSidebar(QDockWidget):
         lang: str,
         setChatMessageID: Callable,
         starter_messages: list[str],
+        createUser: Callable,
     ):
         super().__init__("Kue AI", iface.mainWindow())
 
@@ -58,6 +61,7 @@ class KueSidebar(QDockWidget):
         self.lang = lang
         self.setChatMessageID = setChatMessageID
         self.starter_messages = starter_messages
+        self.createUser = createUser
         # The parent widget is either kue or auth
         self.parent_widget = QStackedWidget()
 
@@ -86,17 +90,31 @@ class KueSidebar(QDockWidget):
         pricing.setContentsMargins(0, 0, 0, 10)
         pricing.setMinimumWidth(300)
 
+        get_started_button = QPushButton(
+            KUE_START_BUTTON.get(lang, KUE_START_BUTTON["en"])
+        )
+        get_started_button.setFixedWidth(280)
+        get_started_button.setStyleSheet(
+            "QPushButton { background-color: #0d6efd; color: white; border: none; padding: 8px; border-radius: 4px; } QPushButton:hover { background-color: #0b5ed7; }"
+        )
+        get_started_button.clicked.connect(self.createUser)
+
         login_button = QPushButton(KUE_LOGIN_BUTTON.get(lang, KUE_LOGIN_BUTTON["en"]))
         login_button.setFixedWidth(280)
         login_button.setStyleSheet(
-            "QPushButton { background-color: #0d6efd; color: white; border: none; padding: 8px; border-radius: 4px; } QPushButton:hover { background-color: #0b5ed7; }"
+            "QPushButton { background-color: #6c757d; color: white; border: none; padding: 8px; border-radius: 4px; } QPushButton:hover { background-color: #5c636a; }"
         )
         login_button.clicked.connect(self.authenticateUser)
+
+        button_layout = QVBoxLayout()
+        button_layout.addWidget(get_started_button)
+        button_layout.addWidget(login_button)
 
         auth_layout.addWidget(title)
         auth_layout.addWidget(description)
         auth_layout.addWidget(pricing)
-        auth_layout.addWidget(login_button)
+        auth_layout.addLayout(button_layout)
+
         self.auth_widget.setLayout(auth_layout)
 
         # 1. Build the textbox and enter button widget
