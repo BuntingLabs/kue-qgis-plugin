@@ -92,24 +92,18 @@ class KueTask(QgsTask):
             if reply.error() == QNetworkReply.NoError:
                 return True
             elif reply.attribute(QNetworkRequest.HttpStatusCodeAttribute) == 402:
-                self.errorReceived.emit(
-                    "Kue requires a subscription. Go to buntinglabs.com/dashboard to enter your payment information."
-                )
+                self.errorReceived.emit(reply.readAll().data().decode())
                 return False
             # Handle auth failed specifically
             elif reply.attribute(QNetworkRequest.HttpStatusCodeAttribute) == 403:
+                self.errorReceived.emit(reply.readAll().data().decode())
                 kue_token = QSettings().value("buntinglabs-kue/auth_token", "")
                 if kue_token:
-                    self.errorReceived.emit(
-                        "Sign in to buntinglabs.com to connect your account. Opening a new tab."
-                    )
                     QDesktopServices.openUrl(
                         QUrl(
                             f"https://buntinglabs.com/account/register?kue_token={kue_token}"
                         )
                     )
-                else:
-                    self.errorReceived.emit("Restart Kue (or QGIS) to start using Kue.")
 
                 return False
             # Unexpected server error
@@ -144,6 +138,11 @@ class KueTask(QgsTask):
         super().cancel()
 
     def handle_ready_read(self, reply):
+        # Check if status code is 200
+        status_code = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
+        if status_code != 200:
+            return
+
         if not self.has_sent_chat_message_id:
             chat_message_id = reply.rawHeader(b"x-chat-session-id")
             if chat_message_id:

@@ -322,6 +322,9 @@ class KueSidebar(QDockWidget):
             self.chat_display.verticalScrollBar().maximum()
         )
 
+    def addError(self, msg: str):
+        self.insertChars(msg, QColor("red"))
+
     def insertChars(self, chars, start_color=None):
         self.chat_display.moveCursor(QTextCursor.End)
         if start_color:
@@ -385,6 +388,10 @@ class KueSidebar(QDockWidget):
                 ccf.setFontItalic(not ccf.fontItalic())
                 self.chat_display.setCurrentCharFormat(ccf)
                 chars = chars[1:]
+        if start_color:
+            end_color = self.palette().color(self.palette().Text)
+            ccf.setForeground(end_color)
+            self.chat_display.setCurrentCharFormat(ccf)
 
     def resetTextCursor(self):
         cursor = self.chat_display.textCursor()

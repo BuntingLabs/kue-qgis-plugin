@@ -1028,9 +1028,7 @@ class KuePlugin:
             }
 
     def handleKueError(self, msg):
-        self.text_dock_widget.addMessage(
-            {"role": "error", "msg": msg, "has_button": False}
-        )
+        self.text_dock_widget.addError(msg)
 
     def setChatMessageID(self, chat_message_id: str):
         self.chat_message_id = chat_message_id
